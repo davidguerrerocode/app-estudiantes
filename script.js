@@ -5,7 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let timers = {};
     let currentStudentId = null;
     
-    // Configuración inicial de motivos (se carga desde localStorage después)
+    // Configuración inicial de motivos
     let settings = { 
         alertThreshold: 10, 
         departureReasons: [ 
@@ -47,7 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
         themeToggle: document.getElementById('theme-toggle'),
     };
     
-    // --- UTILIDADES Y TOASTS ---
+    // --- UTILIDADES Y TEMA ---
     const toggleLoader = (show) => dom.loader.style.display = show ? 'flex' : 'none';
 
     function getAlertThresholdByReason(reasonName) {
@@ -63,7 +63,6 @@ document.addEventListener('DOMContentLoaded', () => {
         toast.className = `${baseClass} ${typeClasses[type]}`; 
         toast.textContent = message; 
         
-        // Animación de entrada
         toast.style.opacity = 0;
         toast.style.transform = 'translateY(-10px)';
         requestAnimationFrame(() => {
@@ -73,7 +72,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         dom.toastContainer.appendChild(toast); 
         
-        // Animación de salida
         setTimeout(() => {
             toast.style.opacity = 0;
             toast.style.transform = 'translateY(-10px)';
@@ -81,12 +79,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 3000); 
     }
     
-    // --- TEMA ---
     const applyTheme = (theme) => { 
         const isDark = theme === 'dark';
         document.documentElement.classList.toggle('dark', isDark); 
         localStorage.setItem('theme', theme); 
-        renderAll(); // Forzar el redibujo de gráficos con los nuevos colores
+        // Redibujar gráficos si estamos en la pestaña de análisis para actualizar colores
+        if(document.getElementById('analytics').style.display === 'block') {
+             renderAnalytics(getFilteredHistory());
+        }
     };
     
     const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
@@ -188,7 +188,10 @@ document.addEventListener('DOMContentLoaded', () => {
         renderStudents(); 
         renderOutOfClassroom(); 
         renderHistoryTable(filteredHistory); 
-        renderAnalytics(filteredHistory); 
+        // Solo renderizar analytics si la pestaña está activa para optimización
+        if(document.getElementById('analytics').style.display === 'block') {
+             renderAnalytics(filteredHistory); 
+        }
         renderStatCards(); 
     }
 
@@ -201,13 +204,15 @@ document.addEventListener('DOMContentLoaded', () => {
         dom.dateFilterSection.classList.toggle('hidden', !showDateFilter);
 
         if (tabId === 'settings') { renderReasonsList(); }
+        // Si activamos analytics, forzar render
+        if (tabId === 'analytics') { renderAnalytics(getFilteredHistory()); }
     }
     
     /** Renderiza la lista de grupos en formato acordeón (Grado > Grupo) */
     function populateGroupList() {
         if (allStudents.length === 0) return;
 
-        // 1. Obtener y ordenar los grados
+        // 1. Obtener y ordenar los grados (orden de niveles educativos)
         const grades = [...new Set(allStudents.map(s => s.grade))];
         const gradeOrder = ["PRE-JARDIN", "JARDIN", "TRANSICION", "PRIMERO", "SEGUNDO", "TERCERO", "CUARTO", "QUINTO", "SEXTO", "SEPTIMO", "OCTAVO", "NOVENO", "DECIMO", "UNDECIMO"];
         grades.sort((a, b) => {
@@ -241,6 +246,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // 5. Aplicar lógica de Acordeón
         document.querySelectorAll('.accordion-header').forEach(h => {
             const c = h.nextElementSibling;
+            // Asegurar que el acordeón activo se muestre abierto al cargar
             if (h.classList.contains('open')) { c.style.maxHeight = `${c.scrollHeight}px`; }
 
             h.addEventListener('click', () => { 
@@ -293,7 +299,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         dom.studentList.innerHTML = toShow.map(s => { 
-            const studentId = s.name; 
+            const studentId = s.name; // Usar el nombre como ID único si no hay otro ID
             const isOut = outOfClassroom.some(o => o.id === studentId); 
             
             return `<div class="flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors rounded-lg">
@@ -328,6 +334,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const diffMins = minutes + (seconds / 60);
             const card = timerElement.closest('.card');
             if(card) {
+                // Aplica la clase de alerta si excede el umbral
                 card.classList.toggle('long-absence-alert', diffMins > threshold); 
             }
         };
@@ -338,6 +345,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     /** Renderiza la lista de estudiantes actualmente fuera */
     function renderOutOfClassroom() {
+        // Detener y limpiar temporizadores viejos
         Object.values(timers).forEach(clearInterval);
         timers = {};
         
@@ -367,7 +375,7 @@ document.addEventListener('DOMContentLoaded', () => {
         outOfClassroom.forEach(startTimer);
     }
 
-    /** Funciones de Simulación (Manejo de Modal, Salida y Regreso) */
+    /** Funciones de Salida y Regreso */
     window.toggleModal = (show, id = null) => {
         currentStudentId = id;
         if (id) {
@@ -384,7 +392,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const t = new Date(), t_iso = t.toISOString(), r = dom.departureReason.value, n = s.name; 
             const studentId = n; 
             
+            // Registrar estudiante fuera de clase
             outOfClassroom.push({ id: studentId, name: n, reason: r, time: t_iso }); 
+            // Registrar evento en historial (sin returnTime aún)
             allHistory.push({ studentId: studentId, name: n, reason: r, departureTime: t_iso, timestamp: new Date().toISOString(), returnTime: null, duration: null }); 
             
             saveSession(); 
@@ -403,9 +413,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const d_s = Math.floor((t - new Date(s.time)) / 1000); 
             const d = `${Math.floor(d_s / 60)}m ${d_s % 60}s`; 
             
+            // Actualizar registro en historial
             const h = allHistory.find(h => h.studentId === id && !h.returnTime); 
             if(h) { h.returnTime = t_iso; h.duration = d; } 
             
+            // Quitar de estudiantes fuera
             outOfClassroom.splice(i, 1); 
             clearInterval(timers[id]); 
             delete timers[id]; 
@@ -422,15 +434,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- ANALYTICS & STATS ---
 
     function getChartColors() {
+        // Obtiene colores dinámicos según el tema
         const isDark = document.documentElement.classList.contains('dark');
-        const accent = getComputedStyle(document.documentElement).getPropertyValue('--text-accent').trim();
         const primary = getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim();
         const secondary = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
         
         return {
-            accent, primary, secondary,
+            primary, secondary,
             grid: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
-            pieColors: ['#4f46e5', '#f97316', '#10b981', '#ef4444', '#f59e0b', '#3b82f6'].map(c => isDark ? c.replace('e5', 'f0').replace('9e', 'b3').replace('10', '22').replace('44', '60').replace('73', '90').replace('82', 'a0') : c),
+            // Paleta de colores para gráficos circulares y de barras
+            palette: ['#4f46e5', '#f97316', '#10b981', '#ef4444', '#f59e0b', '#3b82f6'].map(c => {
+                 // Ligeros ajustes de saturación para modo oscuro si es necesario
+                 return isDark ? c.replace('#4f46e5', '#818cf8').replace('#10b981', '#34d399') : c;
+            }),
         };
     }
 
@@ -446,6 +462,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const studentInfo = allStudents.find(s => s.name === h.name);
             if (studentInfo) {
+                // Usar Grado - Grupo como clave
                 const groupKey = `${studentInfo.grade} - ${studentInfo.group}`;
                 data.groupDepartures[groupKey] = (data.groupDepartures[groupKey] || 0) + 1;
                 data.students[h.name] = (data.students[h.name] || 0) + 1;
@@ -464,73 +481,75 @@ document.addEventListener('DOMContentLoaded', () => {
         const sortedStudents = Object.entries(data.students).sort(([, a], [, b]) => b - a).slice(0, 10);
 
         // --- 2. Opciones Base ---
-        const chartOptions = (title, type = 'bar') => ({
+        const chartOptions = (type = 'bar') => ({
             responsive: true, maintainAspectRatio: false, plugins: { 
                 legend: { labels: { color: colors.primary, font: { family: 'Inter' } } }, 
-                title: { display: false } // Título ya está en el HTML
+                tooltip: { bodyFont: { family: 'Inter' }, titleFont: { family: 'Inter', weight: 'bold' } }
             }, 
             scales: type !== 'doughnut' && type !== 'pie' ? { 
                 x: { ticks: { color: colors.secondary }, grid: { color: colors.grid } },
                 y: { ticks: { color: colors.secondary }, grid: { color: colors.grid } } 
             } : {},
-            // Mejora de fuente para legibilidad
             font: { family: 'Inter', color: colors.primary }
         });
         
-        // --- 3. Destruir y Crear Gráficos ---
+        // --- 3. Destruir Gráficos Existentes ---
         Object.values(charts).forEach(chart => { if (chart) chart.destroy(); });
+
+        // --- 4. Crear Gráficos Dinámicos ---
 
         // Gráfico 1: Salidas por Hora del Día
         charts.hourly = new Chart(document.getElementById('hourly-chart').getContext('2d'), {
             type: 'bar', data: {
                 labels: Array.from({ length: 24 }, (_, i) => `${i}:00`),
-                datasets: [{ label: 'Salidas', data: data.hourly, backgroundColor: colors.accent, borderRadius: 5 }]
-            }, options: chartOptions('Salidas por Hora del Día')
+                datasets: [{ label: 'Salidas', data: data.hourly, backgroundColor: colors.palette[0], borderRadius: 5 }]
+            }, options: chartOptions()
         });
 
         // Gráfico 2: Salidas por Grupo (Donut)
         charts.groupDepartures = new Chart(document.getElementById('group-departures-chart').getContext('2d'), {
             type: 'doughnut', data: {
                 labels: Object.keys(data.groupDepartures),
-                datasets: [{ data: Object.values(data.groupDepartures), backgroundColor: colors.pieColors }]
-            }, options: chartOptions('Distribución por Grupo', 'doughnut')
+                datasets: [{ data: Object.values(data.groupDepartures), backgroundColor: colors.palette }]
+            }, options: chartOptions('doughnut')
         });
 
         // Gráfico 3: Duración Promedio por Motivo
         charts.avgDuration = new Chart(document.getElementById('avg-duration-chart').getContext('2d'), {
             type: 'bar', data: {
                 labels: avgDurationData.map(d => d.reason),
-                datasets: [{ label: 'Segundos', data: avgDurationData.map(d => d.avg), backgroundColor: '#f59e0b', borderRadius: 5 }]
-            }, options: chartOptions('Duración Promedio por Motivo')
+                datasets: [{ label: 'Segundos', data: avgDurationData.map(d => d.avg), backgroundColor: colors.palette[4], borderRadius: 5 }]
+            }, options: chartOptions()
         });
         
         // Gráfico 4: Motivos de Salida (Pie)
         charts.reasons = new Chart(document.getElementById('reasons-chart').getContext('2d'), {
             type: 'pie', data: {
                 labels: Object.keys(data.reasons),
-                datasets: [{ data: Object.values(data.reasons), backgroundColor: ['#ef4444', '#10b981', '#3b82f6', '#f59e0b', '#8b5cf6'] }]
-            }, options: chartOptions('Proporción de Motivos', 'pie')
+                datasets: [{ data: Object.values(data.reasons), backgroundColor: colors.palette }]
+            }, options: chartOptions('pie')
         });
 
         // Gráfico 5: Estudiantes con Más Salidas (Barra horizontal)
         charts.students = new Chart(document.getElementById('students-chart').getContext('2d'), {
             type: 'bar', data: {
                 labels: sortedStudents.map(([name]) => name),
-                datasets: [{ label: 'Número de Salidas', data: sortedStudents.map(([, count]) => count), backgroundColor: '#10b981', borderRadius: 5 }]
+                datasets: [{ label: 'Número de Salidas', data: sortedStudents.map(([, count]) => count), backgroundColor: colors.palette[2], borderRadius: 5 }]
             }, options: {
-                ...chartOptions('Top 10 Estudiantes con Más Salidas'), indexAxis: 'y',
+                ...chartOptions(), indexAxis: 'y', // Configuración para barra horizontal
             }
         });
     }
 
     function renderStatCards() {
+        // Lógica de cálculo de estadísticas del día
         const historyToday = allHistory.filter(h => new Date(h.departureTime).toDateString() === new Date().toDateString());
         const totalDeparturesToday = historyToday.length;
         let totalDurationSecToday = 0;
         let completedDeparturesToday = 0;
 
         historyToday.forEach(h => {
-            if (h.returnTime) {
+            if (h.returnTime && h.duration) {
                 const d_s = h.duration.match(/(\d+)m (\d+)s/);
                 if (d_s) {
                     totalDurationSecToday += (parseInt(d_s[1]) * 60) + parseInt(d_s[2]);
@@ -554,6 +573,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return; 
         }
         
+        // Mostrar historial del más reciente al más antiguo
         dom.historyTableBody.innerHTML = historyData.slice().reverse().map(h => {
             const departure = h.departureTime ? new Date(h.departureTime).toLocaleString() : '---';
             const retorno = h.returnTime ? new Date(h.returnTime).toLocaleString() : '---';
@@ -590,10 +610,11 @@ document.addEventListener('DOMContentLoaded', () => {
         loadSession();
         loadHistoryCache();
         
-        // CORRECCIÓN CLAVE: Carga el JSON usando ruta relativa (debe estar en la misma carpeta)
+        // CORRECCIÓN CLAVE: Carga el JSON usando ruta relativa
         try {
             const response = await fetch('datos_estudiantes.json');
             if (!response.ok) {
+                // Si falla la carga, intenta usar la caché y lanza un error
                 loadStudentCache(); 
                 throw new Error(`Fallo de red o archivo JSON no encontrado/accesible. Código: ${response.status}`);
             }
@@ -603,7 +624,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast('Datos de estudiantes cargados.', 'success');
         } catch (e) {
             if (allStudents.length === 0) { 
-                showToast(`ERROR CRÍTICO: No se pudieron cargar los datos de estudiantes. Revisa tu archivo JSON.`, 'error');
+                showToast(`ERROR CRÍTICO: No se pudieron cargar los datos de estudiantes. Asegúrate que 'datos_estudiantes.json' esté en la raíz.`, 'error');
             } else {
                 showToast(`ADVERTENCIA: Falló carga JSON. Usando ${allStudents.length} estudiantes de la caché.`, 'info');
             }
@@ -618,8 +639,8 @@ document.addEventListener('DOMContentLoaded', () => {
     
     initializeApp();
     
-    // --- EXPORT FUNCTIONS (No se modifican) ---
-    function exportToCSV() { /* ... Lógica CSV ... */ 
+    // --- EXPORT FUNCTIONS ---
+    function exportToCSV() { 
         const historyData = getFilteredHistory();
         if (historyData.length === 0) { showToast('No hay datos para exportar.', 'error'); return; }
 
@@ -648,7 +669,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Historial exportado a CSV.', 'success');
     }
 
-    function exportToPDF() { /* ... Lógica PDF ... */ 
+    function exportToPDF() { 
         const historyData = getFilteredHistory();
         if (historyData.length === 0) { showToast('No hay datos para exportar.', 'error'); return; }
         
