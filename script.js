@@ -1,5 +1,5 @@
 // ** CONFIGURACIÓN Y CONSTANTES **
-// URL de tu Google Sheet (Confirmada como válida)
+// Reemplaza TU_URL_PUBLICA_DE_GOOGLE_SHEET_AQUI si necesitas cambiar la fuente.
 const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRcumpa6f1_6lkdyOU1hkymg4evm6a1vXFaWfNRDJ-cxM8qqETGPJ6GnfrzYdOdQ8RHxJ3-wuwxymzD/pub?output=csv';
 const MAX_STUDENTS_OUT_PER_GROUP = 2; // Límite de salida
 
@@ -10,7 +10,7 @@ const filtroGrupo = document.getElementById('filtro-grupo');
 const searchInput = document.getElementById('search-input');
 const themeToggle = document.getElementById('theme-toggle');
 
-// Estado Global Avanzado (incluye tiempos y se persiste)
+// Estado Global
 let estudiantesData = []; 
 let estudiantesStatus = {}; // { 'ID': { state: 'in'/'out', outTime: timestamp, totalTimeOut: ms }, ... }
 let gradosUnicos = new Set();
@@ -107,7 +107,7 @@ async function cargarEstudiantes() {
         }
 
         // 2. Procesar datos y configurar filtros
-        procesarDatosParaFiltros(estudiantesData); // <-- Solución al error "is not defined"
+        procesarDatosParaFiltros(estudiantesData); // <--- ESTA FUNCIÓN ESTÁ AQUÍ AHORA
         llenarFiltroGrado();
         aplicarFiltros();
         updateGlobalStatus();
@@ -120,7 +120,7 @@ async function cargarEstudiantes() {
 }
 
 // ----------------------------------------------------------------------
-// --- LÓGICA DE FILTRADO Y PROCESAMIENTO ---
+// --- LÓGICA DE FILTRADO Y PROCESAMIENTO (Bloque Faltante Corregido) ---
 // ----------------------------------------------------------------------
 
 function procesarDatosParaFiltros(data) {
@@ -231,9 +231,9 @@ function toggleRegistro(id) {
         }
     }
 
-    saveStatus(); // Persistir el estado
+    saveStatus(); 
     updateGlobalStatus();
-    aplicarFiltros(); // Re-renderizar
+    aplicarFiltros(); 
 }
 
 function countStudentsOutByGroup(grado, grupo) {
@@ -264,7 +264,6 @@ function updateGlobalStatus() {
     document.getElementById('count-out').textContent = outCount;
     document.getElementById('count-total').textContent = totalStudents;
     
-    // Calcular tiempo promedio
     const avgTimeMs = totalStudents > 0 ? totalTimeOutMS / totalStudents : 0;
     document.getElementById('avg-time-out').textContent = formatTime(avgTimeMs);
 
