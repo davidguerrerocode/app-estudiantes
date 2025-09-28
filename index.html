@@ -1,37 +1,46 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Base de Datos de Estudiantes</title>
-    <link rel="stylesheet" href="styles.css">
-</head>
 <body>
-    <h1>Base de Datos de Estudiantes</h1>
-    
-    <div class="controles">
-        <input type="text" id="busquedaNombre" placeholder="Buscar por Nombre">
-        <select id="filtroGrado">
-            <option value="">Filtrar por Grado</option>
-        </select>
-    </div>
+    <header>
+        <h1>Smart Break</h1>
+        <p>Centro de Inteligencia del Aula v3.0</p>
+        <button class="sun-toggle">☀️</button> 
+    </header>
 
-    <div id="reportes">
+    <nav class="main-nav">
+        <button class="nav-button active">Dashboard</button>
+        <button class="nav-button">Registrar</button>
+        <button class="nav-button">Estadísticas</button>
+        <button class="nav-button">Historial</button>
+        <button class="nav-button">Configuración</button>
+    </nav>
+
+    <div class="container">
+        <h2>Base de Datos de Estudiantes</h2> 
+
+        <div class="controles">
+            <input type="text" id="busquedaNombre" placeholder="Buscar por Nombre, ID o Grupo">
+            <select id="filtroGrado">
+                <option value="">Filtrar por Grado</option>
+            </select>
+            <button id="btnDescargarCsv" class="primary-button">Descargar Datos (CSV)</button>
         </div>
+        
+        <div id="reportes" class="card">
+            <h3>Reporte de Grados</h3>
+            </div>
 
-    <table id="tablaEstudiantes">
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Nombre del Alumno</th>
-                <th>Grado</th>
-                <th>Grupo</th>
-            </tr>
-        </thead>
-        <tbody>
-            </tbody>
-    </table>
+        <table id="tablaEstudiantes">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nombre del Alumno</th>
+                    <th>Grado</th>
+                    <th>Grupo</th>
+                </tr>
+            </thead>
+            <tbody>
+                </tbody>
+        </table>
+    </div>
 
     <script src="script.js"></script>
 </body>
-</html>
