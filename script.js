@@ -484,7 +484,7 @@ function displayHistorial() {
 // ----------------------------------------------------------------------
 
 function initCharts() {
-    // ... (El código de initCharts se mantiene igual)
+    // ... (El código de initCharts es el mismo que en la versión anterior)
     const totalStudents = estudiantesData.length;
     const outCount = estudiantesData.filter(est => estudiantesStatus[est.ID].state === 'out').length;
     const inCount = totalStudents - outCount;
