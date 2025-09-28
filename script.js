@@ -1,16 +1,17 @@
 // ** CONFIGURACIÓN Y CONSTANTES **
-// Reemplaza TU_URL_PUBLICA_DE_GOOGLE_SHEET_AQUI si necesitas cambiar la fuente.
+// URL de tu Google Sheet (Verificada)
 const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRcumpa6f1_6lkdyOU1hkymg4evm6a1vXFaWfNRDJ-cxM8qqETGPJ6GnfrzYdOdQ8RHxJ3-wuwxymzD/pub?output=csv';
 const MAX_STUDENTS_OUT_PER_GROUP = 2; // Límite de salida
 
-// Elementos del DOM
+// Elementos del DOM (Aseguramos que todos sean accedidos correctamente)
 const container = document.getElementById('estudiantes-container');
 const filtroGrado = document.getElementById('filtro-grado');
 const filtroGrupo = document.getElementById('filtro-grupo');
 const searchInput = document.getElementById('search-input');
 const themeToggle = document.getElementById('theme-toggle');
+const maxLimitSpan = document.getElementById('max-limit');
 
-// Estado Global
+// Estado Global (Variables que deben ser accesibles por todas las funciones)
 let estudiantesData = []; 
 let estudiantesStatus = {}; // { 'ID': { state: 'in'/'out', outTime: timestamp, totalTimeOut: ms }, ... }
 let gradosUnicos = new Set();
@@ -19,6 +20,7 @@ let gruposPorGrado = {};
 // Instancias de Gráficos
 let statusChartInstance = null;
 let timeChartInstance = null;
+
 
 // ----------------------------------------------------------------------
 // --- UTILERÍAS ---
@@ -40,12 +42,10 @@ function formatTime(ms) {
         return `${Math.round(ms / 1000)} seg`;
     }
     const minutes = Math.floor(ms / 60000);
-    const seconds = Math.round((ms % 60000) / 1000);
-    if (seconds > 30) {
-        return `${minutes + 1} min`;
-    }
-    return `${minutes} min`;
+    // Para el promedio, no necesitamos segundos, redondeamos.
+    return `${minutes} min`; 
 }
+
 
 // ----------------------------------------------------------------------
 // --- LÓGICA CSV Y CARGA ---
@@ -67,12 +67,7 @@ function parseCSVtoJSON(csvText) {
 
         headers.forEach((header, index) => {
             const value = values[index] ? values[index].trim() : '';
-
-            if (header === 'Grado' || header === 'ID') {
-                student[header] = isNaN(Number(value)) || value === '' ? value : Number(value);
-            } else {
-                student[header] = value;
-            }
+            student[header] = value;
         });
 
         if (student.Nombre_alumno && student.Nombre_alumno !== '') {
@@ -92,7 +87,9 @@ function parseCSVtoJSON(csvText) {
 
 async function cargarEstudiantes() {
     loadStatus(); // 1. Cargar estado persistente
+    maxLimitSpan.textContent = MAX_STUDENTS_OUT_PER_GROUP; // Establecer el límite visualmente
     container.innerHTML = '<p>Cargando datos desde Google Sheets...</p>';
+
     try {
         const response = await fetch(GOOGLE_SHEET_URL);
         if (!response.ok) {
@@ -107,7 +104,7 @@ async function cargarEstudiantes() {
         }
 
         // 2. Procesar datos y configurar filtros
-        procesarDatosParaFiltros(estudiantesData); // <--- ESTA FUNCIÓN ESTÁ AQUÍ AHORA
+        procesarDatosParaFiltros(estudiantesData); // <--- AHORA SÍ ESTÁ DEFINIDA
         llenarFiltroGrado();
         aplicarFiltros();
         updateGlobalStatus();
@@ -119,12 +116,14 @@ async function cargarEstudiantes() {
     }
 }
 
+
 // ----------------------------------------------------------------------
-// --- LÓGICA DE FILTRADO Y PROCESAMIENTO (Bloque Faltante Corregido) ---
+// --- LÓGICA DE FILTRADO Y PROCESAMIENTO (El bloque que faltaba) ---
 // ----------------------------------------------------------------------
 
 function procesarDatosParaFiltros(data) {
-    gradosUnicos = new Set();
+    // Reestablecemos el set y el objeto globalmente
+    gradosUnicos.clear();
     gruposPorGrado = {};
     
     data.forEach(estudiante => {
@@ -139,6 +138,7 @@ function procesarDatosParaFiltros(data) {
         if (grupo && grupo !== 'N/A') gruposPorGrado[grado].add(grupo);
     });
 
+    // Convertir a Array y ordenar
     gradosUnicos = Array.from(gradosUnicos).sort();
     for (const grado in gruposPorGrado) {
         gruposPorGrado[grado] = Array.from(gruposPorGrado[grado]).sort();
@@ -199,6 +199,7 @@ function aplicarFiltros() {
     mostrarEstudiantes(estudiantesFiltrados);
 }
 
+
 // ----------------------------------------------------------------------
 // --- LÓGICA DE REGISTRO Y ESTADO ---
 // ----------------------------------------------------------------------
@@ -239,8 +240,8 @@ function toggleRegistro(id) {
 function countStudentsOutByGroup(grado, grupo) {
     let count = 0;
     for (const est of estudiantesData) {
-        if (String(est.Grado) === String(grado) && 
-            String(est.Grupo) === String(grupo) && 
+        if (String(est.Grado).trim() === String(grado).trim() && 
+            String(est.Grupo).trim() === String(grupo).trim() && 
             estudiantesStatus[est.ID].state === 'out') {
             count++;
         }
@@ -319,6 +320,7 @@ function mostrarEstudiantes(estudiantesAMostrar) {
         });
     });
 }
+
 
 // ----------------------------------------------------------------------
 // --- LÓGICA DE GRÁFICOS Y TEMA ---
