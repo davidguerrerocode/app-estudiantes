@@ -1,51 +1,23 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- NOTA IMPORTANTE PARA EL DESARROLLO EN VS CODE/GITHUB PAGES ---
-    // La aplicación completa de Smart Break SÓLO funciona cuando se carga desde la URL de Google Apps Script.
-    // Los botones (Salida/Regreso) no funcionarán en VS Code o GitHub Pages porque requieren 'google.script.run'.
-    // He modificado la inicialización para que la app se cargue solo con datos de caché si falla la conexión.
-    
-    // --- THEME ---
-    const themeToggle = document.getElementById('theme-toggle');
-    const applyTheme = (theme) => { 
-        document.documentElement.classList.toggle('dark', theme === 'dark'); 
-        document.getElementById('theme-icon-sun').classList.toggle('hidden', theme === 'dark'); 
-        document.getElementById('theme-icon-moon').classList.toggle('hidden', theme !== 'dark'); 
-        // Renderizar todos los gráficos para que el color de texto se actualice
-        renderAnalytics(getFilteredHistory()); 
-    };
-    const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    applyTheme(savedTheme);
-    themeToggle.addEventListener('click', () => { 
-        const newTheme = document.documentElement.classList.contains('dark') ? 'light' : 'dark'; 
-        localStorage.setItem('theme', newTheme); 
-        applyTheme(newTheme); 
-        renderAll(); 
-    });
-    
-    // --- TOAST NOTIFICATIONS ---
-    const toastContainer = document.getElementById('toast-container');
-    function showToast(message, type = 'success') { 
-        const toast = document.createElement('div'); 
-        toast.className = `toast toast-${type}`; 
-        toast.textContent = message; 
-        toastContainer.appendChild(toast); 
-        setTimeout(() => toast.remove(), 3000); 
-    }
+    // La aplicación NO está conectada a la base de datos de Google Sheets.
+    // Los datos de estudiantes se cargan desde el JSON local y el historial es simulado y guardado en localStorage.
 
     // --- ESTADO GLOBAL & DOM ---
-    // He añadido datos de prueba para que la app no esté vacía en VS Code
-    let allStudents = [
-        { name: "Juan Pérez", grade: "SEXTO", group: "A" },
-        { name: "María García", grade: "SEXTO", group: "B" },
-        { name: "Pedro López", grade: "SEPTIMO", group: "A" },
-        { name: "Ana Díaz", grade: "SEPTIMO", group: "A" },
-        { name: "Luis Martínez", grade: "DECIMO", group: "C" },
-    ], allHistory = [], outOfClassroom = [], activeGroup = null, currentStudentId = null;
+    let allStudents = [], allHistory = [], outOfClassroom = [], activeGroup = null, currentStudentId = null;
     let charts = { reasons: null, students: null, hourly: null, avgDuration: null, groupDepartures: null };
     let timers = {};
+    
+    // CAMBIO CLAVE: Settings ahora usa un mapa para motivos y tiempos
     let settings = { 
-        alertThreshold: 10, 
-        departureReasons: ["Baño", "Coordinación", "Enfermería", "Psicología", "Otro"] 
+        alertThreshold: 10, // Se mantiene como fallback, pero se priorizan los tiempos por motivo.
+        departureReasons: [ 
+            { name: "Baño", time: 5 }, 
+            { name: "Coordinación", time: 10 }, 
+            { name: "Enfermería", time: 15 }, 
+            { name: "Psicología", time: 10 }, 
+            { name: "Otro", time: 20 }
+        ]
     };
     const { jsPDF } = window.jspdf;
 
@@ -67,8 +39,9 @@ document.addEventListener('DOMContentLoaded', () => {
         modal: document.getElementById('departure-modal'),
         modalStudentName: document.getElementById('modal-student-name'), 
         departureReason: document.getElementById('departure-reason'),
-        reasonsList: document.getElementById('reasons-list'), 
+        reasonsTimeList: document.getElementById('reasons-time-list'), // Nuevo DOM element
         newReasonInput: document.getElementById('new-reason-input'), 
+        newReasonTime: document.getElementById('new-reason-time'), // Nuevo DOM element
         addReasonBtn: document.getElementById('add-reason-btn'),
         alertThresholdInput: document.getElementById('alert-threshold'), 
         saveSettingsBtn: document.getElementById('save-settings-btn'),
@@ -76,41 +49,99 @@ document.addEventListener('DOMContentLoaded', () => {
         exportPdfBtn: document.getElementById('export-pdf'),
     };
     
+    // --- UTILIDADES ---
+    const toggleLoader = (show) => dom.loader.style.display = show ? 'flex' : 'none';
+
+    // Función para obtener el tiempo de alerta de un motivo
+    function getAlertThresholdByReason(reasonName) {
+        const reason = settings.departureReasons.find(r => r.name === reasonName);
+        return reason ? reason.time : settings.alertThreshold; // Usa el tiempo específico o el global (10 min) como fallback
+    }
+
+    // --- TOAST NOTIFICATIONS ---
+    const toastContainer = document.getElementById('toast-container');
+    function showToast(message, type = 'success') { 
+        const toast = document.createElement('div'); 
+        toast.className = `toast toast-${type}`; 
+        toast.textContent = message; 
+        toastContainer.appendChild(toast); 
+        setTimeout(() => toast.remove(), 3000); 
+    }
+    
+    // --- TEMA ---
+    const themeToggle = document.getElementById('theme-toggle');
+    const applyTheme = (theme) => { 
+        document.documentElement.classList.toggle('dark', theme === 'dark'); 
+        document.getElementById('theme-icon-sun').classList.toggle('hidden', theme === 'dark'); 
+        document.getElementById('theme-icon-moon').classList.toggle('hidden', theme !== 'dark'); 
+        renderAll(); // Re-renderizar gráficos
+    };
+    const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    applyTheme(savedTheme);
+    themeToggle.addEventListener('click', () => { 
+        const newTheme = document.documentElement.classList.contains('dark') ? 'light' : 'dark'; 
+        localStorage.setItem('theme', newTheme); 
+        applyTheme(newTheme); 
+    });
+    
     // --- SETTINGS & LOCAL STORAGE ---
     function loadSettings() { 
         try { 
             const s = localStorage.getItem('smartBreakSettings'); 
             if(s) settings = JSON.parse(s); 
         } catch(e){} 
-        dom.alertThresholdInput.value = settings.alertThreshold; 
+        // Ya no cargamos alertThresholdInput, solo lo usamos como valor de respaldo
         renderReasonsList(); 
     }
+    
     function saveSettings() { 
-        settings.alertThreshold = parseInt(dom.alertThresholdInput.value) || 10; 
+        // Recolectar los nuevos tiempos de los inputs antes de guardar
+        dom.reasonsTimeList.querySelectorAll('.reason-time-input').forEach(input => {
+            const name = input.dataset.reasonName;
+            const newTime = parseInt(input.value) || 1;
+            const reasonIndex = settings.departureReasons.findIndex(r => r.name === name);
+            if(reasonIndex > -1) {
+                settings.departureReasons[reasonIndex].time = newTime;
+            }
+        });
+
+        // Guardar configuración, incluyendo la estructura actualizada de departureReasons
         localStorage.setItem('smartBreakSettings', JSON.stringify(settings)); 
-        showToast('Configuración guardada.', 'success'); 
+        showToast('Configuración de motivos y tiempos guardada.', 'success'); 
         renderAll(); 
     }
+    
     function renderReasonsList() { 
-        dom.reasonsList.innerHTML = settings.departureReasons.map((r, i) => 
-            `<div class="flex justify-between items-center p-2 rounded" style="background-color: var(--bg-main)">
-                <span>${r}</span>
-                <button data-index="${i}" class="remove-reason-btn text-red-500 font-bold text-xl px-2">&times;</button>
+        dom.reasonsTimeList.innerHTML = settings.departureReasons.map((r, i) => 
+            `<div class="flex justify-between items-center p-3 rounded card">
+                <span class="font-medium">${r.name}</span>
+                <div class="flex items-center gap-2">
+                    <input type="number" data-reason-name="${r.name}" value="${r.time}" min="1" class="reason-time-input w-16 p-1 text-center rounded-md" style="border: 1px solid var(--border-color)">
+                    <span class="text-sm" style="color: var(--text-secondary)">min</span>
+                    <button data-index="${i}" class="remove-reason-btn text-red-500 font-bold text-xl px-2">&times;</button>
+                </div>
             </div>`).join(''); 
-        dom.departureReason.innerHTML = settings.departureReasons.map(r => `<option>${r}</option>`).join(''); 
+            
+        // Rellenar el Select del Modal (solo con nombres)
+        dom.departureReason.innerHTML = settings.departureReasons.map(r => `<option>${r.name}</option>`).join(''); 
     }
+    
     function addReason() { 
         const r = dom.newReasonInput.value.trim(); 
-        if (r && !settings.departureReasons.includes(r)) { 
-            settings.departureReasons.push(r); 
+        const t = parseInt(dom.newReasonTime.value) || 10;
+        
+        if (r && !settings.departureReasons.some(d => d.name === r)) { 
+            settings.departureReasons.push({ name: r, time: t }); 
             dom.newReasonInput.value = ''; 
+            dom.newReasonTime.value = 10;
             renderReasonsList(); 
             saveSettings(); 
             showToast('Motivo de salida añadido.', 'success');
-        } else if(settings.departureReasons.includes(r)) {
+        } else if(settings.departureReasons.some(d => d.name === r)) {
             showToast('Este motivo ya existe.', 'info');
         }
     }
+    
     function removeReason(index) { 
         settings.departureReasons.splice(index, 1); 
         renderReasonsList(); 
@@ -118,13 +149,11 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Motivo de salida eliminado.', 'error');
     }
 
-    const toggleLoader = (show) => dom.loader.style.display = show ? 'flex' : 'none';
-    
     // Almacenamiento Local (Caché de emergencia/Offline)
     function saveSession() { localStorage.setItem('smartBreakSession', JSON.stringify(outOfClassroom)); }
     function loadSession() { try { const s = localStorage.getItem('smartBreakSession'); if(s) outOfClassroom = JSON.parse(s); } catch(e){ outOfClassroom = []; } }
     function saveStudentCache() { localStorage.setItem('smartBreakStudents', JSON.stringify(allStudents)); }
-    function loadStudentCache() { try { const s = localStorage.getItem('smartBreakStudents'); if(s) allStudents = JSON.parse(s); } catch(e) { /* Usar datos de prueba si no hay caché */ } }
+    function loadStudentCache() { try { const s = localStorage.getItem('smartBreakStudents'); if(s) allStudents = JSON.parse(s); } catch(e) { /* Fallback */ } }
     function saveHistoryCache() { localStorage.setItem('smartBreakHistory', JSON.stringify(allHistory)); }
     function loadHistoryCache() { try { const h = localStorage.getItem('smartBreakHistory'); if(h) allHistory = JSON.parse(h); } catch(e){ allHistory = []; } }
 
@@ -154,9 +183,18 @@ document.addEventListener('DOMContentLoaded', () => {
         renderStatCards(); 
     }
 
-    // --- RENDER FUNCTIONS (Lógica del frontend, sin cambios) ---
+    // --- RENDER FUNCTIONS ---
+    function setActiveTab(tabId) {
+        dom.tabs.forEach(btn => btn.classList.toggle('tab-active', btn.dataset.tab === tabId));
+        dom.tabContents.forEach(content => content.style.display = content.id === tabId ? 'block' : 'none');
+        
+        const showDateFilter = ['analytics', 'history'].includes(tabId);
+        dom.dateFilterSection.classList.toggle('hidden', !showDateFilter);
+    }
+    
     function populateGroupList() {
-        // Agrupar y ordenar las asignaturas/grupos
+        if (allStudents.length === 0) return;
+
         const grades = [...new Set(allStudents.map(s => s.grade))];
         const gradeOrder = ["PRE-JARDIN", "JARDIN", "TRANSICION", "PRIMERO", "SEGUNDO", "TERCERO", "CUARTO", "QUINTO", "SEXTO", "SEPTIMO", "OCTAVO", "NOVENO", "DECIMO", "UNDECIMO"];
         grades.sort((a, b) => {
@@ -168,12 +206,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         dom.groupList.innerHTML = grades.map(g => { 
             const groupsInGrade = [...new Set(allStudents.filter(s => s.grade === g).map(s => s.group))].sort((a,b) => a.localeCompare(b, undefined, {numeric: true}));
+            
+            const gradeIsActive = groupsInGrade.some(gr => activeGroup === `${g} - ${gr}`);
+            
             return `<div class="accordion-item">
-                <button class="accordion-header w-full flex justify-between items-center p-3 rounded-md transition-colors hover:bg-gray-100 dark:hover:bg-gray-700" style="color: var(--text-primary)">
+                <button class="accordion-header w-full flex justify-between items-center p-3 rounded-md transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 ${gradeIsActive ? 'open' : ''}" style="color: var(--text-primary)">
                     <span class="font-semibold">${g}</span>
                     <svg class="accordion-arrow w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                 </button>
-                <div class="accordion-content pl-4 pt-1" style="color: var(--text-primary)">
+                <div class="accordion-content pl-4 pt-1" style="color: var(--text-primary); max-height: ${gradeIsActive ? 'fit-content' : '0'}">
                     ${groupsInGrade.map(gr => 
                         `<button class="w-full text-left p-2 rounded-md transition-colors group-btn ${activeGroup === `${g} - ${gr}` ? 'group-btn-active' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}" data-group="${g} - ${gr}">Grupo ${gr}</button>`
                     ).join('')}
@@ -181,11 +222,17 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>`;
         }).join('');
         
-        document.querySelectorAll('.accordion-header').forEach(h => h.addEventListener('click', () => { 
-            const c = h.nextElementSibling; 
-            h.classList.toggle('open'); 
-            c.style.maxHeight = c.style.maxHeight ? null : `${c.scrollHeight}px`; 
-        }));
+        document.querySelectorAll('.accordion-header').forEach(h => {
+            const c = h.nextElementSibling;
+            if (h.classList.contains('open')) {
+                 c.style.maxHeight = `${c.scrollHeight}px`;
+            }
+
+            h.addEventListener('click', () => { 
+                h.classList.toggle('open'); 
+                c.style.maxHeight = c.style.maxHeight === 'fit-content' || c.style.maxHeight === '' || c.style.maxHeight === null ? `${c.scrollHeight}px` : null; 
+            });
+        });
         
         document.querySelectorAll('.group-btn').forEach(b => b.addEventListener('click', (e) => { 
             activeGroup = b.dataset.group;
@@ -193,28 +240,8 @@ document.addEventListener('DOMContentLoaded', () => {
             e.currentTarget.classList.add('group-btn-active');
             renderStudents(); 
         }));
-
-        if (activeGroup) {
-            const [grade] = activeGroup.split(' - ');
-            const header = dom.groupList.querySelector(`.accordion-header span:contains('${grade}')`).closest('.accordion-header');
-            if (header && !header.classList.contains('open')) {
-                header.classList.add('open');
-                header.nextElementSibling.style.maxHeight = `${header.nextElementSibling.scrollHeight}px`;
-            }
-        }
     }
 
-    if (!String.prototype.includes) {
-        String.prototype.includes = function(search, start) {
-            'use strict';
-            if (search instanceof RegExp) {
-                throw TypeError('first argument must not be a RegExp');
-            }
-            if (start === undefined) { start = 0; }
-            return this.indexOf(search, start) !== -1;
-        };
-    }
-    
     function renderStudents() {
         if (!activeGroup) { 
             dom.studentList.innerHTML = ''; 
@@ -240,10 +267,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         dom.studentList.innerHTML = toShow.map(s => { 
-            const studentId = s.name; 
+            const studentId = s.name; // Usamos el nombre como ID local
             const isOut = outOfClassroom.some(o => o.id === studentId); 
             
-            // Los botones llaman a funciones que ya no tienen la conexión a Apps Script, pero evitan errores.
             return `<div class="flex items-center justify-between p-4">
                 <span class="font-medium">${s.name}</span>
                 <button onclick="toggleModal(true, '${studentId}')" 
@@ -256,6 +282,38 @@ document.addEventListener('DOMContentLoaded', () => {
         }).join('');
     }
 
+    function startTimer(student) {
+        if (timers[student.id]) clearInterval(timers[student.id]);
+        
+        const timerElement = document.getElementById(`timer-${student.id}`);
+        if (!timerElement) return;
+        
+        // Obtiene el límite de alerta específico para el motivo de este estudiante
+        const threshold = getAlertThresholdByReason(student.reason);
+
+        const updateTimer = () => {
+            const diffMs = new Date() - new Date(student.time);
+            const totalSeconds = Math.floor(diffMs / 1000);
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            
+            const minStr = minutes.toString().padStart(2, '0');
+            const secStr = seconds.toString().padStart(2, '0');
+            
+            timerElement.textContent = `${minStr}:${secStr}`;
+            
+            const diffMins = minutes + (seconds / 60);
+            const card = timerElement.closest('.card');
+            if(card) {
+                // Usa el threshold específico del motivo para aplicar la alerta
+                card.classList.toggle('long-absence-alert', diffMins > threshold); 
+            }
+        };
+
+        updateTimer();
+        timers[student.id] = setInterval(updateTimer, 1000);
+    }
+    
     function renderOutOfClassroom() {
         Object.values(timers).forEach(clearInterval);
         timers = {};
@@ -263,13 +321,14 @@ document.addEventListener('DOMContentLoaded', () => {
         dom.noOutMessage.style.display = outOfClassroom.length === 0 ? 'block' : 'none';
         
         dom.outList.innerHTML = outOfClassroom.map(s => { 
+            const threshold = getAlertThresholdByReason(s.reason);
             const diffMins = (new Date() - new Date(s.time)) / 60000; 
-            const alertClass = diffMins > settings.alertThreshold ? 'long-absence-alert' : ''; 
+            const alertClass = diffMins > threshold ? 'long-absence-alert' : ''; 
             
             return `<div class="card p-4 rounded-lg shadow-md flex flex-col justify-between animate-fade-in border-l-4 ${alertClass}" style="border-color: var(--text-accent)">
                 <div>
                     <p class="font-bold text-lg">${s.name}</p>
-                    <p class="text-sm" style="color: var(--text-secondary)">${s.reason}</p>
+                    <p class="text-sm" style="color: var(--text-secondary)">${s.reason} (Límite: ${threshold}m)</p>
                     <p class="text-xs mt-1" style="color: var(--text-secondary)">Salió: ${new Date(s.time).toLocaleTimeString()}</p>
                 </div>
                 <div class="mt-4">
@@ -306,22 +365,24 @@ document.addEventListener('DOMContentLoaded', () => {
         }).join('');
     }
 
-    // Funciones de gráficos y estadísticas (sin cambios, usan datos locales o de caché)
-    function renderAnalytics(historyData) { /* ... Lógica de gráficos ... */ }
-    function renderStatCards() { /* ... Lógica de tarjetas ... */ }
-    function startTimer(student) { /* ... Lógica del contador ... */ }
-    function exportToCSV() { /* ... Lógica de exportación CSV ... */ }
-    function exportToPDF() { /* ... Lógica de exportación PDF ... */ }
-    
-    // Las funciones que interactúan con el backend han sido modificadas para *solo* funcionar localmente
-    
+    // Funciones de simulación de Salida/Regreso (MODO LOCAL)
+    window.toggleModal = (show, id = null) => {
+        currentStudentId = id;
+        if (id) {
+            const student = allStudents.find(s => s.name === id);
+            dom.modalStudentName.textContent = student ? student.name : 'Desconocido';
+        }
+        dom.modal.classList.toggle('hidden', !show);
+        dom.modal.classList.toggle('flex', show);
+    };
+
     window.confirmDeparture = () => { 
         const s = allStudents.find(s => s.name === currentStudentId); 
         if (s) { 
             const t = new Date(), t_iso = t.toISOString(), r = dom.departureReason.value, n = s.name; 
             const studentId = n; 
             
-            // Simulación local
+            // Simulación local de salida
             outOfClassroom.push({ id: studentId, name: n, reason: r, time: t_iso }); 
             allHistory.push({ studentId: studentId, name: n, reason: r, departureTime: t_iso, timestamp: new Date().toISOString(), returnTime: null, duration: null }); 
             
@@ -330,8 +391,6 @@ document.addEventListener('DOMContentLoaded', () => {
             renderAll(); 
             toggleModal(false); 
             showToast(`Salida de ${n} simulada (Modo Local).`, 'info'); 
-            
-            // **AQUÍ IRÍA LA LLAMADA A GOOGLE SCRIPT, ELIMINADA PARA GITHUB PAGES**
         } 
     };
 
@@ -343,7 +402,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const d_s = Math.floor((t - new Date(s.time)) / 1000); 
             const d = `${Math.floor(d_s / 60)}m ${d_s % 60}s`; 
             
-            // Simulación local
+            // Simulación local de regreso
             const h = allHistory.find(h => h.studentId === id && !h.returnTime); 
             if(h) { h.returnTime = t_iso; h.duration = d; } 
             
@@ -355,43 +414,258 @@ document.addEventListener('DOMContentLoaded', () => {
             saveHistoryCache(); 
             renderAll(); 
             showToast(`Regreso de ${s.name} simulado (Modo Local).`, 'info'); 
-            
-            // **AQUÍ IRÍA LA LLAMADA A GOOGLE SCRIPT, ELIMINADA PARA GITHUB PAGES**
         } else {
              showToast('Error: El estudiante ya no aparece como ausente.', 'error');
         }
     };
     
+    // --- ANALYTICS & EXPORTS ---
+
+    function renderAnalytics(historyData) {
+        // ... (La lógica de Analytics se mantiene igual, ya que solo consume el historial)
+        const data = {
+            hourly: new Array(24).fill(0),
+            groupDepartures: {},
+            reasons: {},
+            avgDuration: {},
+            students: {}
+        };
+        
+        let totalDurationSeconds = 0;
+        let departuresToday = 0;
+        const today = new Date().toDateString();
+
+        historyData.forEach(h => {
+            if (h.departureTime) {
+                const hour = new Date(h.departureTime).getHours();
+                data.hourly[hour]++;
+                if (new Date(h.departureTime).toDateString() === today) {
+                    departuresToday++;
+                }
+            }
+
+            const studentInfo = allStudents.find(s => s.name === h.name);
+            if (studentInfo) {
+                const groupKey = `${studentInfo.grade} - ${studentInfo.group}`;
+                data.groupDepartures[groupKey] = (data.groupDepartures[groupKey] || 0) + 1;
+                data.students[h.name] = (data.students[h.name] || 0) + 1;
+            }
+
+            data.reasons[h.reason] = (data.reasons[h.reason] || 0) + 1;
+            
+            if (h.duration) {
+                const parts = h.duration.match(/(\d+)m (\d+)s/);
+                if (parts) {
+                    const durationSec = (parseInt(parts[1]) * 60) + parseInt(parts[2]);
+                    data.avgDuration[h.reason] = { 
+                        totalSec: (data.avgDuration[h.reason]?.totalSec || 0) + durationSec,
+                        count: (data.avgDuration[h.reason]?.count || 0) + 1
+                    };
+                    totalDurationSeconds += durationSec;
+                }
+            }
+        });
+        
+        const avgDurationData = Object.entries(data.avgDuration).map(([reason, { totalSec, count }]) => ({
+            reason,
+            avg: totalSec / count
+        }));
+
+        const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--text-accent').trim();
+        const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim();
+        
+        const chartOptions = (title) => ({
+            responsive: true, maintainAspectRatio: false, plugins: { 
+                legend: { labels: { color: primaryColor } }, 
+                title: { display: true, text: title, color: primaryColor } 
+            }, 
+            scales: { 
+                x: { ticks: { color: primaryColor }, grid: { color: 'rgba(156, 163, 175, 0.1)' } },
+                y: { ticks: { color: primaryColor }, grid: { color: 'rgba(156, 163, 175, 0.1)' } } 
+            }
+        });
+        
+        // --- Gráficos (Creación y Destrucción) ---
+        ['hourly', 'groupDepartures', 'avgDuration', 'reasons', 'students'].forEach(key => {
+            if (charts[key]) charts[key].destroy();
+        });
+
+        // Gráfico 1: Salidas por Hora del Día
+        charts.hourly = new Chart(document.getElementById('hourly-chart').getContext('2d'), {
+            type: 'bar', data: {
+                labels: Array.from({ length: 24 }, (_, i) => `${i}:00`),
+                datasets: [{ label: 'Número de Salidas', data: data.hourly, backgroundColor: accentColor, }]
+            }, options: chartOptions('Salidas por Hora del Día')
+        });
+
+        // Gráfico 2: Salidas por Grupo
+        charts.groupDepartures = new Chart(document.getElementById('group-departures-chart').getContext('2d'), {
+            type: 'pie', data: {
+                labels: Object.keys(data.groupDepartures),
+                datasets: [{ data: Object.values(data.groupDepartures),
+                    backgroundColor: ['#4f46e5', '#818cf8', '#6366f1', '#a5b4fc', '#c7d2fe', '#e0e7ff'].slice(0, Object.keys(data.groupDepartures).length),
+                }]
+            }, options: chartOptions('Salidas por Grupo')
+        });
+
+        // Gráfico 3: Duración Promedio por Motivo
+        charts.avgDuration = new Chart(document.getElementById('avg-duration-chart').getContext('2d'), {
+            type: 'bar', data: {
+                labels: avgDurationData.map(d => d.reason),
+                datasets: [{ label: 'Duración Promedio (segundos)', data: avgDurationData.map(d => d.avg), backgroundColor: '#f59e0b', }]
+            }, options: chartOptions('Duración Promedio por Motivo')
+        });
+        
+        // Gráfico 4: Motivos de Salida (Doughnut)
+        charts.reasons = new Chart(document.getElementById('reasons-chart').getContext('2d'), {
+            type: 'doughnut', data: {
+                labels: Object.keys(data.reasons),
+                datasets: [{ data: Object.values(data.reasons),
+                    backgroundColor: ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6'].slice(0, Object.keys(data.reasons).length),
+                }]
+            }, options: chartOptions('Motivos de Salida')
+        });
+
+        // Gráfico 5: Estudiantes con Más Salidas (Barra horizontal)
+        const sortedStudents = Object.entries(data.students).sort(([, a], [, b]) => b - a).slice(0, 10);
+        charts.students = new Chart(document.getElementById('students-chart').getContext('2d'), {
+            type: 'bar', data: {
+                labels: sortedStudents.map(([name]) => name),
+                datasets: [{ label: 'Número de Salidas', data: sortedStudents.map(([, count]) => count), backgroundColor: '#10b981', }]
+            }, options: {
+                ...chartOptions('Estudiantes con Más Salidas (Top 10)'), indexAxis: 'y',
+            }
+        });
+    }
+
+    function renderStatCards() {
+        const historyToday = allHistory.filter(h => new Date(h.departureTime).toDateString() === new Date().toDateString());
+        const totalDeparturesToday = historyToday.length;
+        let totalDurationSecToday = 0;
+        let completedDeparturesToday = 0;
+
+        historyToday.forEach(h => {
+            if (h.returnTime) {
+                const d_s = h.duration.match(/(\d+)m (\d+)s/);
+                if (d_s) {
+                    totalDurationSecToday += (parseInt(d_s[1]) * 60) + parseInt(d_s[2]);
+                    completedDeparturesToday++;
+                }
+            }
+        });
+
+        const avgSecToday = completedDeparturesToday > 0 ? totalDurationSecToday / completedDeparturesToday : 0;
+        const avgMinToday = Math.floor(avgSecToday / 60);
+        const avgSecRemaining = Math.floor(avgSecToday % 60);
+        
+        document.getElementById('stat-out-now').textContent = outOfClassroom.length;
+        document.getElementById('stat-departures-today').textContent = totalDeparturesToday;
+        document.getElementById('stat-avg-duration-today').textContent = `${avgMinToday}m ${avgSecRemaining}s`;
+    }
+
+    function exportToCSV() {
+        const historyData = getFilteredHistory();
+        if (historyData.length === 0) { showToast('No hay datos para exportar.', 'error'); return; }
+
+        const headers = ["Estudiante", "Motivo", "Salida", "Regreso", "Duración"];
+        const rows = historyData.map(h => [
+            h.name, h.reason,
+            h.departureTime ? new Date(h.departureTime).toLocaleString() : '',
+            h.returnTime ? new Date(h.returnTime).toLocaleString() : '',
+            h.duration || ''
+        ]);
+
+        let csvContent = headers.join(",") + "\n";
+        rows.forEach(row => {
+            csvContent += row.map(e => `"${e.replace(/"/g, '""')}"`).join(",") + "\n";
+        });
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', 'smart_break_historial.csv');
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showToast('Historial exportado a CSV.', 'success');
+    }
+
+    function exportToPDF() {
+        const historyData = getFilteredHistory();
+        if (historyData.length === 0) { showToast('No hay datos para exportar.', 'error'); return; }
+        
+        const doc = new jsPDF({ orientation: 'landscape' });
+        doc.text("Historial Smart Break Analytics", 14, 15);
+
+        const columns = ["Estudiante", "Motivo", "Salida", "Regreso", "Duración"];
+        const data = historyData.map(h => [
+            h.name, h.reason,
+            h.departureTime ? new Date(h.departureTime).toLocaleString() : '---',
+            h.returnTime ? new Date(h.returnTime).toLocaleString() : '---',
+            h.duration || '---'
+        ]);
+
+        doc.autoTable(columns, data, {
+            startY: 20,
+            headStyles: { fillColor: [79, 70, 229] }, 
+            styles: { fontSize: 8 },
+            margin: { top: 20 }
+        });
+
+        doc.save('smart_break_historial.pdf');
+        showToast('Historial exportado a PDF.', 'success');
+    }
+
     // --- INIT & LISTENERS ---
     dom.tabs.forEach(t => t.addEventListener('click', () => setActiveTab(t.dataset.tab)));
     dom.searchFilter.addEventListener('input', renderStudents);
     [dom.startDate, dom.endDate].forEach(i => i.addEventListener('change', renderAll));
     dom.resetDatesBtn.addEventListener('click', () => { dom.startDate.value = ''; dom.endDate.value = ''; renderAll(); });
+    
+    // CAMBIO CLAVE: Listener para guardar configuración y añadir/eliminar motivos
     dom.saveSettingsBtn.addEventListener('click', saveSettings);
     dom.addReasonBtn.addEventListener('click', addReason);
-    dom.reasonsList.addEventListener('click', (e) => { 
+    dom.reasonsTimeList.addEventListener('click', (e) => { 
         if (e.target.classList.contains('remove-reason-btn')) { removeReason(e.target.dataset.index); }
     });
+    
     dom.exportCsvBtn.addEventListener('click', exportToCSV);
     dom.exportPdfBtn.addEventListener('click', exportToPDF);
-    window.toggleModal = (show, id = null) => { /* ... Lógica del modal ... */ }; // Asegurar que sea global
 
-    function initializeApp() {
+    // Función de inicialización con carga de JSON
+    async function initializeApp() {
         toggleLoader(true);
         loadSettings();
         loadSession();
-        // loadStudentCache(); // Usamos los datos de prueba
         loadHistoryCache();
         
+        // Carga de estudiantes desde el archivo JSON local
+        try {
+            const response = await fetch('datos_estudiantes.json');
+            if (!response.ok) {
+                loadStudentCache(); 
+                throw new Error(`No se pudo cargar 'datos_estudiantes.json'. Código: ${response.status}`);
+            }
+            const data = await response.json();
+            allStudents = data; 
+            saveStudentCache(); 
+            showToast('Datos de estudiantes cargados desde JSON.', 'success');
+        } catch (e) {
+            if (allStudents.length === 0) { 
+                showToast(`ERROR CRÍTICO: No hay estudiantes. Crea/Revisa 'datos_estudiantes.json'.`, 'error');
+            } else {
+                showToast(`ADVERTENCIA: Falló carga JSON. Usando ${allStudents.length} estudiantes de la caché.`, 'info');
+            }
+            console.error(e);
+        }
+
         renderAll(); 
         setActiveTab('dashboard');
         toggleLoader(false);
-        showToast('Modo de desarrollo local. La app NO está conectada a la base de datos de Google Sheets.', 'info');
-        
-        // **ELIMINADA LA LLAMADA A google.script.run.getInitialData()**
+        showToast('Modo de desarrollo local. Los datos de Salida/Regreso no se guardan en Google Sheets.', 'info');
     }
     
     initializeApp();
 });
-// (Aquí deberían estar las funciones auxiliares de renderAnalytics, startTimer, exports, etc., si las tienes separadas.
-// Si no las tienes, asegúrate de copiarlas en la parte superior del archivo JS, antes de la función initializeApp)
