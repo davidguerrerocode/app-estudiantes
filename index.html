@@ -16,6 +16,7 @@
     <script src="script.js" defer></script> 
     
     <style>
+        /* Variables de Tema */
         :root {
             --bg-main: #f3f4f6; --bg-card: white; --text-primary: #1f2937;
             --text-secondary: #4b5563; --text-accent: #4f46e5; --border-color: #e5e7eb;
@@ -26,74 +27,89 @@
             --text-secondary: #9ca3af; --text-accent: #818cf8; --border-color: #374151;
             --tab-active-bg: #6366f1;
         }
+        
+        /* Estilos Base */
         body { font-family: 'Inter', sans-serif; background-color: var(--bg-main); color: var(--text-primary); transition: background-color 0.3s, color 0.3s; }
         .card { background-color: var(--bg-card); border: 1px solid var(--border-color); }
         .tab-content { display: none; }
         .tab-btn.tab-active { background-color: var(--tab-active-bg); color: white; }
+        
         /* Animaciones y Clases Auxiliares */
         @keyframes spin { to { transform: rotate(360deg); } }
         .spinner { border: 4px solid var(--border-color); border-top-color: var(--text-accent); border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
         .group-btn-active { background-color: var(--text-accent) !important; color: white !important; font-weight: 600; }
-        /* Toast Notifications */
-        #toast-container { position: fixed; top: 1.5rem; right: 1.5rem; z-index: 9999; display: flex; flex-direction: column; gap: 0.75rem; }
-        .toast { padding: 1rem; border-radius: 0.5rem; color: white; font-semibold; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); animation: fadeIn 0.5s, fadeOut 0.5s 2.5s forwards; }
-        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; transform: translateY(-10px); } }
-        .toast-success { background-color: #16a34a; } .toast-error { background-color: #dc2626; } .toast-info { background-color: #2563eb; }
-        /* Acordeón y Alertas */
+        
+        /* Acordeón */
         .accordion-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-in-out; }
         .accordion-arrow { transition: transform 0.3s ease-in-out; }
         .accordion-header.open .accordion-arrow { transform: rotate(180deg); }
+        
+        /* Alertas */
         .long-absence-alert { border-color: #ef4444 !important; animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .7; } }
+        
+        /* Tema Toggle: Usamos una sola clase de rotación para la transición */
+        .theme-icon { transition: transform 0.3s, opacity 0.3s; }
+        html:not(.dark) .theme-icon.sun { transform: rotate(0deg); opacity: 1; }
+        html.dark .theme-icon.sun { transform: rotate(90deg); opacity: 0; }
+        html:not(.dark) .theme-icon.moon { transform: rotate(-90deg); opacity: 0; }
+        html.dark .theme-icon.moon { transform: rotate(0deg); opacity: 1; }
     </style>
 </head>
 <body>
     <div id="loader" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gray-100 dark:bg-gray-900 bg-opacity-80 backdrop-blur-sm"><div class="spinner"></div><p class="mt-4 text-lg" style="color: var(--text-secondary)">Cargando Smart Break...</p></div>
-    <div id="toast-container"></div>
+    <div id="toast-container" class="fixed top-4 right-4 z-[9999] flex flex-col gap-3"></div>
     
     <div class="container mx-auto p-4 md:p-6">
         <header class="relative text-center mb-8 flex flex-col items-center">
             <h1 class="text-4xl md:text-5xl font-extrabold" style="color: var(--text-primary)">Smart Break</h1>
             <p class="mt-2 text-lg" style="color: var(--text-accent)">Centro de Inteligencia del Aula</p>
-            <button id="theme-toggle" class="absolute top-0 right-0 p-2 rounded-full card" style="color: var(--text-secondary)">
-                <svg id="theme-icon-sun" class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 14.95a1 1 0 001.414 1.414l.707-.707a1 1 0 00-1.414-1.414l-.707.707zm-2.121-2.121a1 1 0 011.414 0l.707.707a1 1 0 11-1.414 1.414l-.707-.707a1 1 0 010-1.414zM3 11a1 1 0 100-2H2a1 1 0 100 2h1z"></path></svg>
-                <svg id="theme-icon-moon" class="w-6 h-6 hidden" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
+            
+            <button id="theme-toggle" class="absolute top-0 right-0 p-2 rounded-full card hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" style="color: var(--text-secondary)">
+                <div class="relative w-6 h-6">
+                    <svg class="theme-icon moon absolute inset-0 w-full h-full" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path>
+                    </svg>
+                    <svg class="theme-icon sun absolute inset-0 w-full h-full" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 14.95a1 1 0 001.414 1.414l.707-.707a1 1 0 00-1.414-1.414l-.707.707zm-2.121-2.121a1 1 0 011.414 0l.707.707a1 1 0 11-1.414 1.414l-.707-.707a1 1 0 010-1.414zM3 11a1 1 0 100-2H2a1 1 0 100 2h1z"></path>
+                    </svg>
+                </div>
             </button>
         </header>
 
-        <div class="mb-8 card rounded-lg p-2 flex justify-center space-x-2 md:space-x-4 shadow-sm">
-            <button data-tab="dashboard" class="tab-btn tab-active px-4 py-2 rounded-md font-semibold transition-colors duration-300">Dashboard</button>
-            <button data-tab="tracker" class="tab-btn px-4 py-2 rounded-md font-semibold transition-colors duration-300">Registrar</button>
-            <button data-tab="analytics" class="tab-btn px-4 py-2 rounded-md font-semibold transition-colors duration-300">Estadísticas</button>
-            <button data-tab="history" class="tab-btn px-4 py-2 rounded-md font-semibold transition-colors duration-300">Historial</button>
-            <button data-tab="settings" class="tab-btn px-4 py-2 rounded-md font-semibold transition-colors duration-300">Configuración</button>
+        <div class="mb-8 card rounded-lg p-2 flex justify-center space-x-2 md:space-x-4 shadow-xl">
+            <button data-tab="dashboard" class="tab-btn tab-active px-4 py-2 rounded-lg font-semibold transition-all duration-300 shadow-md">Dashboard</button>
+            <button data-tab="tracker" class="tab-btn px-4 py-2 rounded-lg font-semibold transition-all duration-300 shadow-md">Registrar</button>
+            <button data-tab="analytics" class="tab-btn px-4 py-2 rounded-lg font-semibold transition-all duration-300 shadow-md">Estadísticas</button>
+            <button data-tab="history" class="tab-btn px-4 py-2 rounded-lg font-semibold transition-all duration-300 shadow-md">Historial</button>
+            <button data-tab="settings" class="tab-btn px-4 py-2 rounded-lg font-semibold transition-all duration-300 shadow-md">Configuración</button>
         </div>
         
-        <div id="date-filter-section" class="mb-8 card p-4 rounded-lg shadow-sm flex-col sm:flex-row items-center justify-center gap-4 hidden">
-            <label for="start-date" class="font-semibold">Desde:</label><input type="date" id="start-date" class="p-2 rounded-md card" style="color-scheme: dark;">
-            <label for="end-date" class="font-semibold">Hasta:</label><input type="date" id="end-date" class="p-2 rounded-md card" style="color-scheme: dark;">
-            <button id="reset-dates" class="px-4 py-2 rounded-md transition-colors" style="background-color: var(--text-accent); color: white;">Limpiar</button>
+        <div id="date-filter-section" class="mb-8 card p-4 rounded-xl shadow-lg flex-col sm:flex-row items-center justify-center gap-4 hidden">
+            <label for="start-date" class="font-semibold">Desde:</label><input type="date" id="start-date" class="p-2 rounded-lg card shadow-inner" style="color-scheme: dark;">
+            <label for="end-date" class="font-semibold">Hasta:</label><input type="date" id="end-date" class="p-2 rounded-lg card shadow-inner" style="color-scheme: dark;">
+            <button id="reset-dates" class="px-4 py-2 rounded-lg font-semibold transition-colors bg-red-500 text-white hover:bg-red-600">Limpiar Fechas</button>
         </div>
 
         <div id="dashboard" class="tab-content animate-fade-in" style="display: block;">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div class="card p-6 rounded-lg shadow-md flex items-center gap-4">
+                <div class="card p-6 rounded-xl shadow-lg border-l-4 border-indigo-500 flex items-center gap-4">
                     <div class="p-3 rounded-full bg-indigo-100 dark:bg-indigo-500/20"><svg class="w-8 h-8 text-indigo-500 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg></div>
-                    <div><p class="text-sm font-medium" style="color: var(--text-secondary)">Estudiantes Fuera</p><p id="stat-out-now" class="text-3xl font-bold">0</p></div>
+                    <div><p class="text-sm font-medium" style="color: var(--text-secondary)">Estudiantes Fuera Ahora</p><p id="stat-out-now" class="text-3xl font-bold">0</p></div>
                 </div>
-                <div class="card p-6 rounded-lg shadow-md flex items-center gap-4">
+                <div class="card p-6 rounded-xl shadow-lg border-l-4 border-green-500 flex items-center gap-4">
                     <div class="p-3 rounded-full bg-green-100 dark:bg-green-500/20"><svg class="w-8 h-8 text-green-500 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg></div>
-                    <div><p class="text-sm font-medium" style="color: var(--text-secondary)">Salidas (Hoy)</p><p id="stat-departures-today" class="text-3xl font-bold">0</p></div>
+                    <div><p class="text-sm font-medium" style="color: var(--text-secondary)">Total Salidas (Hoy)</p><p id="stat-departures-today" class="text-3xl font-bold">0</p></div>
                 </div>
-                <div class="card p-6 rounded-lg shadow-md flex items-center gap-4">
+                <div class="card p-6 rounded-xl shadow-lg border-l-4 border-yellow-500 flex items-center gap-4">
                     <div class="p-3 rounded-full bg-yellow-100 dark:bg-yellow-500/20"><svg class="w-8 h-8 text-yellow-500 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div>
-                    <div><p class="text-sm font-medium" style="color: var(--text-secondary)">Promedio (Hoy)</p><p id="stat-avg-duration-today" class="text-3xl font-bold">0m 0s</p></div>
+                    <div><p class="text-sm font-medium" style="color: var(--text-secondary)">Promedio Duración (Hoy)</p><p id="stat-avg-duration-today" class="text-3xl font-bold">0m 0s</p></div>
                 </div>
             </div>
             <section class="mb-8">
-                <h2 class="text-2xl font-bold mb-4" style="color: var(--text-accent)">Estudiantes Fuera del Aula</h2>
+                <h2 class="text-2xl font-bold mb-4" style="color: var(--text-accent)">Alerta de Ausencia Extendida</h2>
                 <div id="out-of-classroom-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                     <p id="no-students-out" class="col-span-full text-center py-8" style="color: var(--text-secondary)">No hay estudiantes fuera.</p>
                 </div>
@@ -102,13 +118,13 @@
 
         <div id="tracker" class="tab-content animate-fade-in">
             <section class="flex flex-col md:flex-row gap-8">
-                <aside class="w-full md:w-1/4 lg:w-1/5 card p-4 rounded-lg shadow-sm">
-                    <h3 class="text-xl font-bold mb-4" style="color: var(--text-accent)">Grupos</h3>
+                <aside class="w-full md:w-1/4 lg:w-1/5 card p-4 rounded-xl shadow-lg">
+                    <h3 class="text-xl font-bold mb-4" style="color: var(--text-accent)">Grupos por Grado</h3>
                     <div id="group-list" class="space-y-2"></div>
                 </aside>
                 <main class="w-full md:w-3/4 lg:w-4/5">
-                    <div class="card p-6 rounded-lg shadow-sm">
-                        <input type="text" id="search-filter" placeholder="Buscar estudiante en este grupo..." class="w-full p-3 rounded-lg card focus:ring-2 focus:outline-none mb-4" style="border: 1px solid var(--border-color);">
+                    <div class="card p-6 rounded-xl shadow-lg">
+                        <input type="text" id="search-filter" placeholder="Buscar estudiante en este grupo..." class="w-full p-3 rounded-lg card shadow-inner focus:ring-2 focus:ring-indigo-500 focus:outline-none mb-4" style="border: 1px solid var(--border-color);">
                         <div id="student-list" class="divide-y" style="border-color: var(--border-color)">
                             <p id="select-group-prompt" class="col-span-full text-center py-8" style="color: var(--text-secondary)">Selecciona un grupo para ver los estudiantes.</p>
                         </div>
@@ -118,20 +134,21 @@
         </div>
         
         <div id="analytics" class="tab-content animate-fade-in">
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div class="card p-6 rounded-lg shadow-md lg:col-span-2"><h3 class="text-xl font-bold mb-4" style="color: var(--text-accent)">Salidas por Hora del Día</h3><canvas id="hourly-chart"></canvas></div>
-                <div class="card p-6 rounded-lg shadow-md"><h3 class="text-xl font-bold mb-4" style="color: var(--text-accent)">Salidas por Grupo</h3><canvas id="group-departures-chart"></canvas></div>
-                <div class="card p-6 rounded-lg shadow-md"><h3 class="text-xl font-bold mb-4" style="color: var(--text-accent)">Duración Promedio por Motivo</h3><canvas id="avg-duration-chart"></canvas></div>
-                <div class="card p-6 rounded-lg shadow-md"><h3 class="text-xl font-bold mb-4" style="color: var(--text-accent)">Motivos de Salida</h3><canvas id="reasons-chart"></canvas></div>
-                <div class="card p-6 rounded-lg shadow-md"><h3 class="text-xl font-bold mb-4" style="color: var(--text-accent)">Estudiantes con Más Salidas</h3><canvas id="students-chart"></canvas></div>
+            <h2 class="text-2xl font-bold mb-6" style="color: var(--text-accent)">Análisis de Salidas</h2>
+            <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                <div class="card p-6 rounded-xl shadow-lg lg:col-span-2 xl:col-span-3"><h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">Salidas por Hora del Día</h3><canvas id="hourly-chart"></canvas></div>
+                <div class="card p-6 rounded-xl shadow-lg"><h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">Distribución por Grupo</h3><canvas id="group-departures-chart"></canvas></div>
+                <div class="card p-6 rounded-xl shadow-lg"><h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">Duración Promedio por Motivo (Segundos)</h3><canvas id="avg-duration-chart"></canvas></div>
+                <div class="card p-6 rounded-xl shadow-lg"><h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">Proporción de Motivos</h3><canvas id="reasons-chart"></canvas></div>
+                <div class="card p-6 rounded-xl shadow-lg lg:col-span-2 xl:col-span-3"><h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">Top 10 Estudiantes con Más Salidas</h3><canvas id="students-chart"></canvas></div>
             </div>
         </div>
 
         <div id="history" class="tab-content animate-fade-in">
-            <div class="card p-6 rounded-lg shadow-sm">
+            <div class="card p-6 rounded-xl shadow-lg">
                 <div class="flex justify-end gap-4 mb-4">
-                    <button id="export-csv" class="px-4 py-2 rounded-md transition-colors text-sm font-semibold" style="background-color: var(--text-accent); color: white;">Exportar a CSV</button>
-                    <button id="export-pdf" class="px-4 py-2 rounded-md transition-colors text-sm font-semibold" style="background-color: var(--text-accent); color: white;">Exportar a PDF</button>
+                    <button id="export-csv" class="px-4 py-2 rounded-lg transition-colors font-semibold bg-green-600 text-white hover:bg-green-700">Exportar a CSV</button>
+                    <button id="export-pdf" class="px-4 py-2 rounded-lg transition-colors font-semibold bg-red-600 text-white hover:bg-red-700">Exportar a PDF</button>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left">
@@ -153,20 +170,21 @@
 
         <div id="settings" class="tab-content animate-fade-in">
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div class="card p-6 rounded-lg shadow-sm"> 
-                    <h3 class="text-xl font-bold mb-4" style="color: var(--text-accent)">Gestionar Motivos y Alertas (Minutos)</h3> 
+                <div class="card p-6 rounded-xl shadow-lg"> 
+                    <h3 class="text-xl font-bold mb-4" style="color: var(--text-accent)">Límites de Alerta por Motivo (Minutos)</h3> 
+                    <p class="text-sm mb-4" style="color: var(--text-secondary)">Define cuántos minutos antes de que el estudiante se considere en "alerta" para cada motivo.</p>
                     
                     <div id="reasons-time-list" class="space-y-4 mb-6">
                         </div>
 
-                    <div class="flex gap-2">
-                        <input type="text" id="new-reason-input" placeholder="Añadir nuevo motivo..." class="flex-grow p-2 rounded-md card" style="border: 1px solid var(--border-color)">
-                        <input type="number" id="new-reason-time" placeholder="Tiempo (min)" min="1" value="10" class="w-24 p-2 rounded-md card" style="border: 1px solid var(--border-color)">
-                        <button id="add-reason-btn" class="px-4 py-2 text-white rounded-md" style="background-color: var(--text-accent)">Añadir</button>
+                    <div class="flex gap-2 items-center">
+                        <input type="text" id="new-reason-input" placeholder="Añadir nuevo motivo..." class="flex-grow p-2 rounded-lg card shadow-inner" style="border: 1px solid var(--border-color)">
+                        <input type="number" id="new-reason-time" placeholder="Tiempo (min)" min="1" value="10" class="w-24 p-2 rounded-lg card shadow-inner" style="border: 1px solid var(--border-color)">
+                        <button id="add-reason-btn" class="px-4 py-2 text-white rounded-lg bg-indigo-600 hover:bg-indigo-700">Añadir</button>
                     </div>
                 </div>
-                <div class="card p-6 rounded-lg shadow-sm flex items-end">
-                    <button id="save-settings-btn" class="w-full mt-6 px-6 py-2 text-white rounded-md" style="background-color: var(--text-accent)">Guardar Configuración</button>
+                <div class="card p-6 rounded-xl shadow-lg flex items-end">
+                    <button id="save-settings-btn" class="w-full mt-6 px-6 py-3 text-white rounded-lg font-bold bg-indigo-600 hover:bg-indigo-700 transition-colors">Guardar Configuración</button>
                 </div>
             </div>
         </div>
@@ -174,16 +192,16 @@
     </div>
     
     <div id="departure-modal" class="fixed inset-0 z-40 hidden items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
-        <div class="card rounded-lg shadow-xl w-11/12 max-w-md p-6">
+        <div class="card rounded-xl shadow-2xl w-11/12 max-w-md p-6 animate-fade-in">
             <h3 class="text-xl font-semibold mb-4">Registrar Salida</h3>
             <p class="mb-4" style="color: var(--text-secondary)">Estudiante: <strong id="modal-student-name" style="color: var(--text-accent)"></strong></p>
             <div class="mb-6">
                 <label for="departure-reason" class="block text-sm font-medium" style="color: var(--text-secondary)">Motivo:</label>
-                <select id="departure-reason" class="mt-1 block w-full rounded-md card focus:ring-indigo-500" style="border: 1px solid var(--border-color)"></select>
+                <select id="departure-reason" class="mt-1 block w-full rounded-lg card p-2 focus:ring-indigo-500 shadow-inner" style="border: 1px solid var(--border-color)"></select>
             </div>
             <div class="flex justify-end gap-4">
-                <button onclick="toggleModal(false)" class="px-4 py-2 rounded-md hover:opacity-80 transition-colors" style="background-color: var(--border-color)">Cancelar</button>
-                <button onclick="confirmDeparture()" class="px-4 py-2 text-white rounded-md hover:opacity-90 transition-colors" style="background-color: var(--text-accent)">Confirmar</button>
+                <button onclick="toggleModal(false)" class="px-4 py-2 rounded-lg transition-colors hover:bg-gray-200 dark:hover:bg-gray-700" style="background-color: var(--border-color)">Cancelar</button>
+                <button onclick="confirmDeparture()" class="px-4 py-2 text-white rounded-lg transition-colors bg-indigo-600 hover:bg-indigo-700">Confirmar Salida</button>
             </div>
         </div>
     </div>
