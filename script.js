@@ -3,7 +3,7 @@
 const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRcumpa6f1_6lkdyOU1hkymg4evm6a1vXFaWfNRDJ-cxM8qqETGPJ6GnfrzYdOdQ8RHxJ3-wuwxymzD/pub?output=csv';
 const MAX_STUDENTS_OUT_PER_GROUP = 2; // Límite de salida
 
-// Elementos del DOM (Aseguramos que todos sean accedidos correctamente)
+// Elementos del DOM
 const container = document.getElementById('estudiantes-container');
 const filtroGrado = document.getElementById('filtro-grado');
 const filtroGrupo = document.getElementById('filtro-grupo');
@@ -11,9 +11,9 @@ const searchInput = document.getElementById('search-input');
 const themeToggle = document.getElementById('theme-toggle');
 const maxLimitSpan = document.getElementById('max-limit');
 
-// Estado Global (Variables que deben ser accesibles por todas las funciones)
+// Estado Global (Definidas correctamente para ser accesibles)
 let estudiantesData = []; 
-let estudiantesStatus = {}; // { 'ID': { state: 'in'/'out', outTime: timestamp, totalTimeOut: ms }, ... }
+let estudiantesStatus = {}; 
 let gradosUnicos = new Set();
 let gruposPorGrado = {};
 
@@ -42,7 +42,6 @@ function formatTime(ms) {
         return `${Math.round(ms / 1000)} seg`;
     }
     const minutes = Math.floor(ms / 60000);
-    // Para el promedio, no necesitamos segundos, redondeamos.
     return `${minutes} min`; 
 }
 
@@ -67,14 +66,15 @@ function parseCSVtoJSON(csvText) {
 
         headers.forEach((header, index) => {
             const value = values[index] ? values[index].trim() : '';
-            student[header] = value;
+            // Se lee todo como string para evitar errores con IDs grandes, 
+            // la conversión se hace solo para la lógica de filtrado/búsqueda.
+            student[header] = value; 
         });
 
         if (student.Nombre_alumno && student.Nombre_alumno !== '') {
             const id = student.ID;
             data.push(student);
             
-            // Inicializar/Comprobar estado para la persistencia
             if (!estudiantesStatus.hasOwnProperty(id)) {
                  estudiantesStatus[id] = { state: 'in', outTime: null, totalTimeOut: 0 }; 
             } else {
@@ -86,9 +86,9 @@ function parseCSVtoJSON(csvText) {
 }
 
 async function cargarEstudiantes() {
-    loadStatus(); // 1. Cargar estado persistente
-    maxLimitSpan.textContent = MAX_STUDENTS_OUT_PER_GROUP; // Establecer el límite visualmente
-    container.innerHTML = '<p>Cargando datos desde Google Sheets...</p>';
+    loadStatus(); 
+    if (maxLimitSpan) maxLimitSpan.textContent = MAX_STUDENTS_OUT_PER_GROUP; 
+    if (container) container.innerHTML = '<p>Cargando datos desde Google Sheets...</p>';
 
     try {
         const response = await fetch(GOOGLE_SHEET_URL);
@@ -103,8 +103,8 @@ async function cargarEstudiantes() {
             return;
         }
 
-        // 2. Procesar datos y configurar filtros
-        procesarDatosParaFiltros(estudiantesData); // <--- AHORA SÍ ESTÁ DEFINIDA
+        // Ejecución de la función que estaba dando error
+        procesarDatosParaFiltros(estudiantesData); 
         llenarFiltroGrado();
         aplicarFiltros();
         updateGlobalStatus();
@@ -112,18 +112,18 @@ async function cargarEstudiantes() {
         
     } catch (error) {
         console.error('Error al cargar los datos:', error);
-        container.innerHTML = `<p style="color: red;">⚠️ Error al cargar los datos: ${error.message}.</p>`;
+        if (container) container.innerHTML = `<p style="color: red;">⚠️ Error al cargar los datos: ${error.message}.</p>`;
     }
 }
 
 
 // ----------------------------------------------------------------------
-// --- LÓGICA DE FILTRADO Y PROCESAMIENTO (El bloque que faltaba) ---
+// --- LÓGICA DE FILTRADO Y PROCESAMIENTO (LA FUNCIÓN CLAVE) ---
 // ----------------------------------------------------------------------
 
 function procesarDatosParaFiltros(data) {
-    // Reestablecemos el set y el objeto globalmente
-    gradosUnicos.clear();
+    // Reestablecer variables globales
+    gradosUnicos = new Set();
     gruposPorGrado = {};
     
     data.forEach(estudiante => {
@@ -327,6 +327,10 @@ function mostrarEstudiantes(estudiantesAMostrar) {
 // ----------------------------------------------------------------------
 
 function initCharts() {
+    const totalStudents = estudiantesData.length;
+    const outCount = estudiantesData.filter(est => estudiantesStatus[est.ID].state === 'out').length;
+    const inCount = totalStudents - outCount;
+    
     // Gráfico de Estado Actual (Doughnut)
     const ctxStatus = document.getElementById('statusChart').getContext('2d');
     statusChartInstance = new Chart(ctxStatus, {
@@ -334,7 +338,7 @@ function initCharts() {
         data: {
             labels: ['Estudiantes Fuera', 'Estudiantes Dentro'],
             datasets: [{
-                data: [0, 0],
+                data: [outCount, inCount],
                 backgroundColor: ['#dc3545', '#28a745'],
                 borderWidth: 2
             }]
@@ -424,14 +428,14 @@ document.addEventListener('DOMContentLoaded', () => {
     handleNavigation();
     
     // Inicializar listeners de búsqueda y filtro
-    searchInput.addEventListener('keyup', aplicarFiltros);
-    filtroGrado.addEventListener('change', () => {
+    if (searchInput) searchInput.addEventListener('keyup', aplicarFiltros);
+    if (filtroGrado) filtroGrado.addEventListener('change', () => {
         const grado = filtroGrado.value;
         llenarFiltroGrupo(grado);
         aplicarFiltros();
     });
-    filtroGrupo.addEventListener('change', aplicarFiltros);
-    themeToggle.addEventListener('click', toggleTheme);
+    if (filtroGrupo) filtroGrupo.addEventListener('change', aplicarFiltros);
+    if (themeToggle) themeToggle.addEventListener('click', toggleTheme);
     
     cargarEstudiantes();
 });
