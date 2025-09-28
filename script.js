@@ -484,7 +484,7 @@ function displayHistorial() {
 // ----------------------------------------------------------------------
 
 function initCharts() {
-    // ... (El código de initCharts es el mismo que en la versión anterior)
+    // ... (El código de initCharts se mantiene igual)
     const totalStudents = estudiantesData.length;
     const outCount = estudiantesData.filter(est => estudiantesStatus[est.ID].state === 'out').length;
     const inCount = totalStudents - outCount;
@@ -529,6 +529,30 @@ function initCharts() {
     });
     
     updateTimeChartByGroup(calculateStudentTimeMetrics());
+}
+
+function updateTimeChartByGroup(metrics) {
+    if (!timeChartInstance) return;
+
+    // Agrupa y suma el tiempo por Grado/Grupo
+    const groupTimes = metrics.reduce((acc, metric) => {
+        const timeInMinutes = metric.totalTimeOut / 60000;
+        acc[metric.gradeGroup] = (acc[metric.gradeGroup] || 0) + timeInMinutes;
+        return acc;
+    }, {});
+
+    const labels = Object.keys(groupTimes);
+    const data = Object.values(groupTimes);
+
+    timeChartInstance.data.labels = labels;
+    timeChartInstance.data.datasets[0].data = data;
+    timeChartInstance.data.datasets[0].backgroundColor = document.body.classList.contains('dark-mode') ? '#7B68EE' : '#6A0DAD';
+    timeChartInstance.options.plugins.title.color = document.body.classList.contains('dark-mode') ? '#f0f0f0' : '#2c2c2c';
+    timeChartInstance.options.scales.y.ticks = { color: document.body.classList.contains('dark-mode') ? '#ccc' : '#666' };
+    timeChartInstance.options.scales.x.ticks = { color: document.body.classList.contains('dark-mode') ? '#ccc' : '#666' };
+
+
+    timeChartInstance.update();
 }
 
 function updateCharts(outCount, inCount) {
