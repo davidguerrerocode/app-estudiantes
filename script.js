@@ -1,16 +1,12 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // --- NOTA IMPORTANTE PARA EL DESARROLLO EN VS CODE/GITHUB PAGES ---
-    // La aplicación NO está conectada a la base de datos de Google Sheets.
-    // Los datos de estudiantes se cargan desde el JSON local y el historial es simulado y guardado en localStorage.
-
     // --- ESTADO GLOBAL & DOM ---
     let allStudents = [], allHistory = [], outOfClassroom = [], activeGroup = null, currentStudentId = null;
     let charts = { reasons: null, students: null, hourly: null, avgDuration: null, groupDepartures: null };
     let timers = {};
     
-    // CAMBIO CLAVE: Settings ahora usa un mapa para motivos y tiempos
+    // Configuración inicial de motivos y tiempos de alerta (en minutos)
     let settings = { 
-        alertThreshold: 10, // Se mantiene como fallback, pero se priorizan los tiempos por motivo.
+        alertThreshold: 10, // Fallback si un motivo se borra accidentalmente
         departureReasons: [ 
             { name: "Baño", time: 5 }, 
             { name: "Coordinación", time: 10 }, 
@@ -39,11 +35,10 @@ document.addEventListener('DOMContentLoaded', () => {
         modal: document.getElementById('departure-modal'),
         modalStudentName: document.getElementById('modal-student-name'), 
         departureReason: document.getElementById('departure-reason'),
-        reasonsTimeList: document.getElementById('reasons-time-list'), // Nuevo DOM element
+        reasonsTimeList: document.getElementById('reasons-time-list'), 
         newReasonInput: document.getElementById('new-reason-input'), 
-        newReasonTime: document.getElementById('new-reason-time'), // Nuevo DOM element
+        newReasonTime: document.getElementById('new-reason-time'), 
         addReasonBtn: document.getElementById('add-reason-btn'),
-        alertThresholdInput: document.getElementById('alert-threshold'), 
         saveSettingsBtn: document.getElementById('save-settings-btn'),
         exportCsvBtn: document.getElementById('export-csv'), 
         exportPdfBtn: document.getElementById('export-pdf'),
@@ -52,7 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- UTILIDADES ---
     const toggleLoader = (show) => dom.loader.style.display = show ? 'flex' : 'none';
 
-    // Función para obtener el tiempo de alerta de un motivo
+    // Función clave: Obtiene el tiempo de alerta (en minutos) de un motivo
     function getAlertThresholdByReason(reasonName) {
         const reason = settings.departureReasons.find(r => r.name === reasonName);
         return reason ? reason.time : settings.alertThreshold; // Usa el tiempo específico o el global (10 min) como fallback
@@ -74,7 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.documentElement.classList.toggle('dark', theme === 'dark'); 
         document.getElementById('theme-icon-sun').classList.toggle('hidden', theme === 'dark'); 
         document.getElementById('theme-icon-moon').classList.toggle('hidden', theme !== 'dark'); 
-        renderAll(); // Re-renderizar gráficos
+        renderAll(); 
     };
     const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     applyTheme(savedTheme);
@@ -90,7 +85,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const s = localStorage.getItem('smartBreakSettings'); 
             if(s) settings = JSON.parse(s); 
         } catch(e){} 
-        // Ya no cargamos alertThresholdInput, solo lo usamos como valor de respaldo
         renderReasonsList(); 
     }
     
@@ -101,17 +95,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const newTime = parseInt(input.value) || 1;
             const reasonIndex = settings.departureReasons.findIndex(r => r.name === name);
             if(reasonIndex > -1) {
-                settings.departureReasons[reasonIndex].time = newTime;
+                // Asegura que el tiempo sea al menos 1 minuto
+                settings.departureReasons[reasonIndex].time = Math.max(1, newTime); 
             }
         });
 
-        // Guardar configuración, incluyendo la estructura actualizada de departureReasons
         localStorage.setItem('smartBreakSettings', JSON.stringify(settings)); 
         showToast('Configuración de motivos y tiempos guardada.', 'success'); 
-        renderAll(); 
+        // Renderizar el Dashboard para aplicar los nuevos límites de alerta
+        renderOutOfClassroom(); 
     }
     
     function renderReasonsList() { 
+        // Renderiza la lista de motivos y sus tiempos en la pestaña Configuración
         dom.reasonsTimeList.innerHTML = settings.departureReasons.map((r, i) => 
             `<div class="flex justify-between items-center p-3 rounded card">
                 <span class="font-medium">${r.name}</span>
@@ -130,14 +126,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const r = dom.newReasonInput.value.trim(); 
         const t = parseInt(dom.newReasonTime.value) || 10;
         
-        if (r && !settings.departureReasons.some(d => d.name === r)) { 
-            settings.departureReasons.push({ name: r, time: t }); 
+        if (r && !settings.departureReasons.some(d => d.name.toLowerCase() === r.toLowerCase())) { 
+            settings.departureReasons.push({ name: r, time: Math.max(1, t) }); 
             dom.newReasonInput.value = ''; 
             dom.newReasonTime.value = 10;
             renderReasonsList(); 
             saveSettings(); 
             showToast('Motivo de salida añadido.', 'success');
-        } else if(settings.departureReasons.some(d => d.name === r)) {
+        } else if(settings.departureReasons.some(d => d.name.toLowerCase() === r.toLowerCase())) {
             showToast('Este motivo ya existe.', 'info');
         }
     }
@@ -190,6 +186,9 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const showDateFilter = ['analytics', 'history'].includes(tabId);
         dom.dateFilterSection.classList.toggle('hidden', !showDateFilter);
+
+        // Si se cambia a Configuración, asegurarse de que los motivos estén al día
+        if (tabId === 'settings') { renderReasonsList(); }
     }
     
     function populateGroupList() {
@@ -209,6 +208,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const gradeIsActive = groupsInGrade.some(gr => activeGroup === `${g} - ${gr}`);
             
+            // Renderiza el botón de grado (acordeón)
             return `<div class="accordion-item">
                 <button class="accordion-header w-full flex justify-between items-center p-3 rounded-md transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 ${gradeIsActive ? 'open' : ''}" style="color: var(--text-primary)">
                     <span class="font-semibold">${g}</span>
@@ -216,12 +216,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 </button>
                 <div class="accordion-content pl-4 pt-1" style="color: var(--text-primary); max-height: ${gradeIsActive ? 'fit-content' : '0'}">
                     ${groupsInGrade.map(gr => 
+                        // Renderiza el botón de grupo
                         `<button class="w-full text-left p-2 rounded-md transition-colors group-btn ${activeGroup === `${g} - ${gr}` ? 'group-btn-active' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}" data-group="${g} - ${gr}">Grupo ${gr}</button>`
                     ).join('')}
                 </div>
             </div>`;
         }).join('');
         
+        // Lógica de Acordeón
         document.querySelectorAll('.accordion-header').forEach(h => {
             const c = h.nextElementSibling;
             if (h.classList.contains('open')) {
@@ -230,10 +232,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             h.addEventListener('click', () => { 
                 h.classList.toggle('open'); 
-                c.style.maxHeight = c.style.maxHeight === 'fit-content' || c.style.maxHeight === '' || c.style.maxHeight === null ? `${c.scrollHeight}px` : null; 
+                // Toggle del max-height para animación CSS
+                c.style.maxHeight = c.style.maxHeight === 'fit-content' || c.style.maxHeight === '' || c.style.maxHeight === null || c.style.maxHeight === '0px' ? `${c.scrollHeight}px` : '0px'; 
             });
         });
         
+        // Listener para seleccionar grupo
         document.querySelectorAll('.group-btn').forEach(b => b.addEventListener('click', (e) => { 
             activeGroup = b.dataset.group;
             document.querySelectorAll('.group-btn').forEach(btn => btn.classList.remove('group-btn-active'));
@@ -390,7 +394,7 @@ document.addEventListener('DOMContentLoaded', () => {
             saveHistoryCache(); 
             renderAll(); 
             toggleModal(false); 
-            showToast(`Salida de ${n} simulada (Modo Local).`, 'info'); 
+            showToast(`Salida de ${n} registrada.`, 'info'); 
         } 
     };
 
@@ -413,7 +417,7 @@ document.addEventListener('DOMContentLoaded', () => {
             saveSession(); 
             saveHistoryCache(); 
             renderAll(); 
-            showToast(`Regreso de ${s.name} simulado (Modo Local).`, 'info'); 
+            showToast(`Regreso de ${s.name} registrado.`, 'success'); 
         } else {
              showToast('Error: El estudiante ya no aparece como ausente.', 'error');
         }
@@ -422,7 +426,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- ANALYTICS & EXPORTS ---
 
     function renderAnalytics(historyData) {
-        // ... (La lógica de Analytics se mantiene igual, ya que solo consume el historial)
+        // ... Lógica de recopilación de datos para gráficos ...
         const data = {
             hourly: new Array(24).fill(0),
             groupDepartures: {},
@@ -436,6 +440,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const today = new Date().toDateString();
 
         historyData.forEach(h => {
+            // Recopilación de salidas por hora y hoy
             if (h.departureTime) {
                 const hour = new Date(h.departureTime).getHours();
                 data.hourly[hour]++;
@@ -444,6 +449,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
+            // Recopilación de salidas por grupo y estudiante
             const studentInfo = allStudents.find(s => s.name === h.name);
             if (studentInfo) {
                 const groupKey = `${studentInfo.grade} - ${studentInfo.group}`;
@@ -451,8 +457,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 data.students[h.name] = (data.students[h.name] || 0) + 1;
             }
 
+            // Recopilación de motivos
             data.reasons[h.reason] = (data.reasons[h.reason] || 0) + 1;
             
+            // Recopilación de duración promedio
             if (h.duration) {
                 const parts = h.duration.match(/(\d+)m (\d+)s/);
                 if (parts) {
@@ -474,6 +482,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--text-accent').trim();
         const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim();
         
+        // Opciones base para los gráficos
         const chartOptions = (title) => ({
             responsive: true, maintainAspectRatio: false, plugins: { 
                 legend: { labels: { color: primaryColor } }, 
@@ -485,7 +494,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         
-        // --- Gráficos (Creación y Destrucción) ---
+        // Destrucción de gráficos previos
         ['hourly', 'groupDepartures', 'avgDuration', 'reasons', 'students'].forEach(key => {
             if (charts[key]) charts[key].destroy();
         });
@@ -498,7 +507,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }, options: chartOptions('Salidas por Hora del Día')
         });
 
-        // Gráfico 2: Salidas por Grupo
+        // Gráfico 2: Salidas por Grupo (Pie)
         charts.groupDepartures = new Chart(document.getElementById('group-departures-chart').getContext('2d'), {
             type: 'pie', data: {
                 labels: Object.keys(data.groupDepartures),
@@ -508,7 +517,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }, options: chartOptions('Salidas por Grupo')
         });
 
-        // Gráfico 3: Duración Promedio por Motivo
+        // Gráfico 3: Duración Promedio por Motivo (Barra)
         charts.avgDuration = new Chart(document.getElementById('avg-duration-chart').getContext('2d'), {
             type: 'bar', data: {
                 labels: avgDurationData.map(d => d.reason),
@@ -624,7 +633,6 @@ document.addEventListener('DOMContentLoaded', () => {
     [dom.startDate, dom.endDate].forEach(i => i.addEventListener('change', renderAll));
     dom.resetDatesBtn.addEventListener('click', () => { dom.startDate.value = ''; dom.endDate.value = ''; renderAll(); });
     
-    // CAMBIO CLAVE: Listener para guardar configuración y añadir/eliminar motivos
     dom.saveSettingsBtn.addEventListener('click', saveSettings);
     dom.addReasonBtn.addEventListener('click', addReason);
     dom.reasonsTimeList.addEventListener('click', (e) => { 
@@ -641,7 +649,7 @@ document.addEventListener('DOMContentLoaded', () => {
         loadSession();
         loadHistoryCache();
         
-        // Carga de estudiantes desde el archivo JSON local
+        // CORRECCIÓN: Asegura que se solicite 'datos_estudiantes.json'
         try {
             const response = await fetch('datos_estudiantes.json');
             if (!response.ok) {
@@ -651,10 +659,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
             allStudents = data; 
             saveStudentCache(); 
-            showToast('Datos de estudiantes cargados desde JSON.', 'success');
+            showToast('Datos de estudiantes cargados.', 'success');
         } catch (e) {
             if (allStudents.length === 0) { 
-                showToast(`ERROR CRÍTICO: No hay estudiantes. Crea/Revisa 'datos_estudiantes.json'.`, 'error');
+                showToast(`ERROR CRÍTICO: No hay estudiantes. Revisa el archivo JSON.`, 'error');
             } else {
                 showToast(`ADVERTENCIA: Falló carga JSON. Usando ${allStudents.length} estudiantes de la caché.`, 'info');
             }
@@ -664,7 +672,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderAll(); 
         setActiveTab('dashboard');
         toggleLoader(false);
-        showToast('Modo de desarrollo local. Los datos de Salida/Regreso no se guardan en Google Sheets.', 'info');
+        showToast('Modo de desarrollo local. Los datos se guardan en el navegador.', 'info');
     }
     
     initializeApp();
