@@ -1,17 +1,16 @@
 // ** CONFIGURACIÓN Y CONSTANTES **
 const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRcumpa6f1_6lkdyOU1hkymg4evm6a1vXFaWfNRDJ-cxM8qqETGPJ6GnfrzYdOdQ8RHxJ3-wuwxymzD/pub?output=csv';
-const MAX_STUDENTS_OUT_PER_GROUP = 2; 
 const MAX_TIME_OUT_MS = 900000; // 15 minutos en milisegundos para la alerta
 
 // Elementos del DOM
-const container = document.getElementById('estudiantes-container');
+const container = document.getElementById('estudiantes-container'); // Lista de búsqueda/filtro
+const outDashboard = document.getElementById('out-students-dashboard'); // NUEVO: Dashboard de solo salidas
 const filtroGrado = document.getElementById('filtro-grado');
 const filtroGrupo = document.getElementById('filtro-grupo');
 const searchInput = document.getElementById('search-input');
 const themeToggle = document.getElementById('theme-toggle');
-const maxLimitSpan = document.getElementById('max-limit');
 const rankingContainer = document.getElementById('ranking-container');
-const groupStatusIndicator = document.getElementById('group-status-indicator'); // NUEVO
+const historialContainer = document.getElementById('historial-container'); // NUEVO
 
 // Estado Global
 let estudiantesData = []; 
@@ -52,11 +51,18 @@ function formatTime(ms) {
     return `${minutes} min`; 
 }
 
+function formatDateTime(timestamp) {
+    if (!timestamp) return 'N/A';
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
 // ----------------------------------------------------------------------
 // --- LÓGICA CSV Y CARGA ---
 // ----------------------------------------------------------------------
 
 function parseCSVtoJSON(csvText) {
+    // ... (El código de parseCSVtoJSON se mantiene igual)
     const lines = csvText.trim().split('\n');
     if (lines.length <= 1) return [];
 
@@ -91,8 +97,8 @@ function parseCSVtoJSON(csvText) {
 
 async function cargarEstudiantes() {
     loadStatus(); 
-    if (maxLimitSpan) maxLimitSpan.textContent = MAX_STUDENTS_OUT_PER_GROUP; 
-    if (container) container.innerHTML = '<p>Cargando datos desde Google Sheets...</p>';
+    if (container) container.innerHTML = '<p>Utilice la búsqueda o los filtros para mostrar la lista completa de alumnos.</p>'; // Inicia vacío
+    if (outDashboard) outDashboard.innerHTML = '<p>Cargando datos...</p>';
 
     try {
         const response = await fetch(GOOGLE_SHEET_URL);
@@ -104,18 +110,22 @@ async function cargarEstudiantes() {
 
         if (estudiantesData.length === 0) {
             container.innerHTML = '<p>No se encontraron estudiantes.</p>';
+            outDashboard.innerHTML = '<p>No se encontraron estudiantes.</p>';
             return;
         }
 
         procesarDatosParaFiltros(estudiantesData); 
         llenarFiltroGrado();
-        aplicarFiltros();
-        updateGlobalStatus();
+        
+        // NO llamamos a aplicarFiltros() para que la lista principal inicie vacía
+        updateGlobalStatus(); 
         initCharts();
+        displayHistorial(); // NUEVO: Muestra el historial simulado
         
     } catch (error) {
         console.error('Error al cargar los datos:', error);
         if (container) container.innerHTML = `<p style="color: red;">⚠️ Error al cargar los datos: ${error.message}.</p>`;
+        if (outDashboard) outDashboard.innerHTML = `<p style="color: red;">⚠️ Error al cargar los datos: ${error.message}.</p>`;
     }
 }
 
@@ -175,6 +185,12 @@ function aplicarFiltros() {
     const gradoSeleccionado = filtroGrado.value;
     const grupoSeleccionado = filtroGrupo.value;
     const searchText = searchInput.value.toLowerCase();
+    
+    // Si no hay filtros aplicados, la lista principal permanece vacía.
+    if (!gradoSeleccionado && !grupoSeleccionado && !searchText) {
+         container.innerHTML = '<p>Utilice la búsqueda o los filtros para mostrar la lista completa de alumnos.</p>';
+         return;
+    }
 
     let estudiantesFiltrados = estudiantesData;
 
@@ -197,45 +213,21 @@ function aplicarFiltros() {
         );
     }
     
-    // PRIORIZACIÓN: Mueve los alumnos FUERA al inicio de la lista filtrada
+    // Priorización: Mueve los alumnos FUERA al inicio de la lista filtrada
     estudiantesFiltrados.sort((a, b) => {
         const aIsOut = estudiantesStatus[a.ID].state === 'out';
         const bIsOut = estudiantesStatus[b.ID].state === 'out';
-        return bIsOut - aIsOut; // True (1) va antes que False (0)
+        return bIsOut - aIsOut;
     });
 
-    mostrarEstudiantes(estudiantesFiltrados);
-    updateGroupStatusIndicator(gradoSeleccionado, grupoSeleccionado); // NUEVO
+    // Muestra la lista principal, que ahora se llena solo con filtros.
+    mostrarEstudiantes(estudiantesFiltrados, container, true); 
 }
 
 
 // ----------------------------------------------------------------------
 // --- LÓGICA DE REGISTRO Y ESTADO ---
 // ----------------------------------------------------------------------
-
-// NUEVA FUNCIÓN: Actualiza el semáforo de grupo
-function updateGroupStatusIndicator(grado, grupo) {
-    if (!groupStatusIndicator) return;
-
-    // Solo muestra el semáforo si se ha seleccionado un grado Y un grupo
-    if (grado && grupo) {
-        groupStatusIndicator.style.display = 'block';
-        const count = countStudentsOutByGroup(grado, grupo);
-        
-        groupStatusIndicator.classList.remove('verde', 'amarillo', 'rojo');
-
-        if (count === 0) {
-            groupStatusIndicator.classList.add('verde');
-        } else if (count >= MAX_STUDENTS_OUT_PER_GROUP) {
-            groupStatusIndicator.classList.add('rojo');
-        } else {
-            groupStatusIndicator.classList.add('amarillo');
-        }
-    } else {
-        groupStatusIndicator.style.display = 'none';
-    }
-}
-
 
 function toggleRegistro(id) {
     const studentStatus = estudiantesStatus[id];
@@ -244,17 +236,12 @@ function toggleRegistro(id) {
     if (!estudiante) return;
 
     if (studentStatus.state === 'in') {
-        const outCount = countStudentsOutByGroup(estudiante.Grado, estudiante.Grupo);
-        
-        if (outCount >= MAX_STUDENTS_OUT_PER_GROUP) {
-            alert(`Límite alcanzado: Ya hay ${MAX_STUDENTS_OUT_PER_GROUP} estudiantes del grupo ${estudiante.Grado}-${estudiante.Grupo} fuera.`);
-            return; 
-        }
-        
+        // Registro de Salida (ya no hay límite de MAX_STUDENTS_OUT_PER_GROUP)
         studentStatus.state = 'out';
         studentStatus.outTime = new Date().getTime(); 
         
     } else {
+        // Registro de Entrada
         studentStatus.state = 'in';
         if (studentStatus.outTime) {
             const timeElapsed = new Date().getTime() - studentStatus.outTime;
@@ -268,30 +255,21 @@ function toggleRegistro(id) {
     aplicarFiltros(); 
 }
 
-function countStudentsOutByGroup(grado, grupo) {
-    let count = 0;
-    for (const est of estudiantesData) {
-        if (String(est.Grado).trim() === String(grado).trim() && 
-            String(est.Grupo).trim() === String(grupo).trim() && 
-            estudiantesStatus[est.ID].state === 'out') {
-            count++;
-        }
-    }
-    return count;
-}
-
 function updateGlobalStatus() {
     let outCount = 0;
     let totalTimeOutMS = 0;
 
     for (const id in estudiantesStatus) {
         const status = estudiantesStatus[id];
-        // Si el alumno está fuera, actualiza su tiempo de sesión actual
-        if (status.state === 'out' && status.outTime) {
-            // Calculamos el tiempo transcurrido desde la salida para la métrica global
-            totalTimeOutMS += (new Date().getTime() - status.outTime);
+        if (status.state === 'out') {
+            outCount++;
         }
-        totalTimeOutMS += status.totalTimeOut;
+        
+        let currentTotalTimeOut = status.totalTimeOut;
+        if (status.state === 'out' && status.outTime) {
+            currentTotalTimeOut += (new Date().getTime() - status.outTime);
+        }
+        totalTimeOutMS += currentTotalTimeOut;
     }
 
     const totalStudents = estudiantesData.length;
@@ -304,13 +282,17 @@ function updateGlobalStatus() {
     studentMetrics = calculateStudentTimeMetrics();
     updateCharts(outCount, totalStudents - outCount);
     displayStudentRanking(studentMetrics); 
+    
+    // Actualiza el dashboard de alumnos actualmente fuera
+    displayOutStudentsDashboard();
 }
 
-function mostrarEstudiantes(estudiantesAMostrar) {
-    container.innerHTML = ''; 
+// Función genérica para mostrar tarjetas de estudiantes (tanto para dashboard como para filtros)
+function mostrarEstudiantes(estudiantesAMostrar, targetContainer, showTimeAlert) {
+    targetContainer.innerHTML = ''; 
 
     if (estudiantesAMostrar.length === 0) {
-        container.innerHTML = '<p>No se encontraron estudiantes con los filtros aplicados.</p>';
+        targetContainer.innerHTML = '<p>No se encontraron alumnos.</p>';
         return;
     }
 
@@ -321,30 +303,24 @@ function mostrarEstudiantes(estudiantesAMostrar) {
         const status = estudiantesStatus[id];
         const isOut = status.state === 'out';
         
-        // Lógica de Alerta de Tiempo (15 minutos)
         let isTimeAlert = false;
+        let timeElapsed = 0;
         if (isOut && status.outTime) {
-            const timeElapsed = new Date().getTime() - status.outTime;
+            timeElapsed = new Date().getTime() - status.outTime;
             if (timeElapsed > MAX_TIME_OUT_MS) {
                 isTimeAlert = true;
             }
         }
         
-        const outCount = countStudentsOutByGroup(grado, grupo);
-        const limitReached = !isOut && outCount >= MAX_STUDENTS_OUT_PER_GROUP;
-
         const card = document.createElement('div');
         card.classList.add('estudiante-card');
         if (isOut) card.classList.add('out');
-        if (limitReached) card.classList.add('limit-reached');
-        if (isTimeAlert) card.classList.add('time-alert'); // AÑADIDO: Clase de alerta
+        if (isTimeAlert && showTimeAlert) card.classList.add('time-alert'); 
         
         const btnText = isOut ? 'Registrar Entrada' : 'Registrar Salida';
         
-        // Si el alumno está fuera, mostramos el tiempo que lleva fuera en la tarjeta
         let timeInfo = `Tiempo total fuera: ${formatTime(status.totalTimeOut)}`;
-        if (isOut && status.outTime) {
-            const timeElapsed = new Date().getTime() - status.outTime;
+        if (isOut) {
             timeInfo = `Lleva fuera: ${formatTime(timeElapsed)}<br>Total acumulado: ${formatTime(status.totalTimeOut)}`;
         }
         
@@ -356,22 +332,43 @@ function mostrarEstudiantes(estudiantesAMostrar) {
                 Grado: ${grado} | Grupo: ${grupo}
                 <br>${timeInfo}
             </div>
-            <button class="registro-btn" 
-                    data-id="${id}" 
-                    ${limitReached ? 'disabled' : ''}>
+            <button class="registro-btn" data-id="${id}">
                 ${btnText}
             </button>
         `;
         
-        container.appendChild(card);
+        targetContainer.appendChild(card);
     });
     
-    document.querySelectorAll('.registro-btn').forEach(button => {
+    // Asegurarse de que los nuevos botones tengan el listener
+    targetContainer.querySelectorAll('.registro-btn').forEach(button => {
         button.addEventListener('click', (e) => {
             const id = e.target.dataset.id;
             toggleRegistro(id);
         });
     });
+}
+
+// NUEVA FUNCIÓN: Muestra solo los alumnos que están fuera
+function displayOutStudentsDashboard() {
+    const outStudents = estudiantesData.filter(est => estudiantesStatus[est.ID].state === 'out');
+    
+    if (outStudents.length === 0) {
+        outDashboard.innerHTML = '<p>Ningún estudiante fuera de clase.</p>';
+        return;
+    }
+    
+    // Priorizamos los que llevan más tiempo fuera en el dashboard
+    outStudents.sort((a, b) => {
+        const statusA = estudiantesStatus[a.ID];
+        const statusB = estudiantesStatus[b.ID];
+        const timeA = statusA.outTime ? new Date().getTime() - statusA.outTime : 0;
+        const timeB = statusB.outTime ? new Date().getTime() - statusB.outTime : 0;
+        return timeB - timeA;
+    });
+
+    // Usamos la función genérica, mostrando la alerta de tiempo
+    mostrarEstudiantes(outStudents, outDashboard, true);
 }
 
 
@@ -408,7 +405,7 @@ function displayStudentRanking(metrics) {
         rankingContainer.innerHTML = '<p>Ningún alumno ha salido al descanso hoy.</p>';
         return;
     }
-
+    // ... (El resto del código de displayStudentRanking se mantiene igual)
     let tableHTML = `
         <table class="ranking-table">
             <thead>
@@ -437,26 +434,48 @@ function displayStudentRanking(metrics) {
     rankingContainer.innerHTML = tableHTML;
 }
 
-function updateTimeChartByGroup(metrics) {
-    const groupTimes = {}; 
+// NUEVA FUNCIÓN: Simulación de Historial de Movimientos
+function displayHistorial() {
+    if (!historialContainer) return;
 
-    metrics.forEach(metric => {
-        const key = metric.gradeGroup;
-        if (!groupTimes[key]) groupTimes[key] = 0;
-        groupTimes[key] += metric.totalTimeOut;
+    // Simulación de 10 movimientos recientes
+    const now = new Date().getTime();
+    const simulatedData = [
+        { alumno: "Juan Pérez", tipo: "Salida", tiempo: now - (5 * 60000), grupo: "1-A" },
+        { alumno: "María López", tipo: "Entrada", tiempo: now - (8 * 60000), grupo: "3-C" },
+        { alumno: "Carlos Ruiz", tipo: "Salida", tiempo: now - (15 * 60000), grupo: "2-B" },
+        { alumno: "Ana Gómez", tipo: "Entrada", tiempo: now - (20 * 60000), grupo: "1-A" },
+        { alumno: "Pedro Díaz", tipo: "Salida", tiempo: now - (35 * 60000), grupo: "3-C" },
+        { alumno: "Sofía Castro", tipo: "Entrada", tiempo: now - (40 * 60000), grupo: "2-B" },
+    ].sort((a, b) => b.tiempo - a.tiempo); // Más reciente primero
+
+    let tableHTML = `
+        <table class="ranking-table">
+            <thead>
+                <tr>
+                    <th>Hora</th>
+                    <th>Alumno</th>
+                    <th>Grado/Grupo</th>
+                    <th>Tipo</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    simulatedData.forEach(item => {
+        const rowClass = item.tipo === 'Salida' ? 'out' : 'in';
+        tableHTML += `
+            <tr class="${rowClass}">
+                <td>${formatDateTime(item.tiempo)}</td>
+                <td>${item.alumno}</td>
+                <td>${item.grupo}</td>
+                <td style="font-weight: bold; color: ${item.tipo === 'Salida' ? '#6A0DAD' : '#28a745'};">${item.tipo}</td>
+            </tr>
+        `;
     });
 
-    const labels = Object.keys(groupTimes).sort();
-    const data = labels.map(key => Math.round(groupTimes[key] / 60000));
-
-    if (timeChartInstance) {
-        timeChartInstance.data.labels = labels;
-        timeChartInstance.data.datasets[0].data = data;
-        timeChartInstance.data.datasets[0].label = 'Tiempo Acumulado (min)';
-        timeChartInstance.data.datasets[0].backgroundColor = labels.map((_, i) => i % 2 === 0 ? '#6A0DAD' : '#9370DB');
-        timeChartInstance.options.plugins.title.text = 'Tiempo Total Acumulado por Grado/Grupo';
-        timeChartInstance.update();
-    }
+    tableHTML += '</tbody></table>';
+    historialContainer.innerHTML = tableHTML;
 }
 
 
@@ -478,7 +497,7 @@ function initCharts() {
             labels: ['Estudiantes Fuera', 'Estudiantes Dentro'],
             datasets: [{
                 data: [outCount, inCount],
-                backgroundColor: ['#B22222', '#28a745'], 
+                backgroundColor: ['#6A0DAD', '#28a745'], 
                 borderWidth: 2
             }]
         },
@@ -567,11 +586,10 @@ document.addEventListener('DOMContentLoaded', () => {
     loadTheme();
     handleNavigation();
     
-    // El evento 'change' en filtroGrado ahora también desencadena la actualización del semáforo.
+    // Los filtros ahora solo llaman a aplicarFiltros (que maneja la lista vacía)
     if (searchInput) searchInput.addEventListener('keyup', aplicarFiltros);
     if (filtroGrado) filtroGrado.addEventListener('change', () => {
-        const grado = filtroGrado.value;
-        llenarFiltroGrupo(grado);
+        llenarFiltroGrupo(filtroGrado.value);
         aplicarFiltros();
     });
     if (filtroGrupo) filtroGrupo.addEventListener('change', aplicarFiltros);
@@ -579,12 +597,18 @@ document.addEventListener('DOMContentLoaded', () => {
     
     cargarEstudiantes();
     
-    // Opcional: Actualizar la visualización cada 5 segundos para tiempo real
+    // Actualización de tiempo real cada 5 segundos
     setInterval(() => {
-        // Solo actualizamos la visualización si estamos en la pestaña de registro activa
         if (document.getElementById('registro').classList.contains('active')) {
-             aplicarFiltros(); // Esto redibuja las tarjetas y actualiza el tiempo "Lleva fuera"
+             displayOutStudentsDashboard(); // Actualiza el tiempo 'Lleva fuera'
+             // Solo actualizamos la lista principal si ya tiene contenido (filtros aplicados)
+             if (container.innerHTML !== '<p>Utilice la búsqueda o los filtros para mostrar la lista completa de alumnos.</p>') {
+                 aplicarFiltros(); 
+             }
         }
-        updateGlobalStatus(); // Esto actualiza los contadores y gráficos
+        updateGlobalStatus(); // Actualiza contadores y gráficos
+        if (document.getElementById('estadisticas').classList.contains('active')) {
+            displayHistorial();
+        }
     }, 5000); 
 });
