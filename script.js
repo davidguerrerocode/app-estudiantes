@@ -114,6 +114,7 @@ async function cargarEstudiantes() {
             return;
         }
 
+        // ESTA FUNCIÓN ESTÁ DEFINIDA ABAJO, DEBE EXISTIR.
         procesarDatosParaFiltros(estudiantesData); 
         llenarFiltroGrado();
         
@@ -528,6 +529,7 @@ function initCharts() {
         }
     });
     
+    // ESTA FUNCIÓN ESTÁ DEFINIDA ABAJO, DEBE EXISTIR.
     updateTimeChartByGroup(calculateStudentTimeMetrics());
 }
 
