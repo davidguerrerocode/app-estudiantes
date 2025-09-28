@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Break - Registro de Salidas</title>
+    <title>Smart Break - Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -11,38 +11,80 @@
 
     <header>
         <h1>Smart Break</h1>
-        <div id="status-contador">Estudiantes fuera: 0 / Total: 0</div>
         <button id="theme-toggle">🌙</button> 
+        
+        <nav class="main-nav">
+            <a href="#" class="nav-item active" data-section="registro">Registro</a>
+            <a href="#" class="nav-item" data-section="estadisticas">Estadísticas</a>
+        </nav>
     </header>
     
     <main>
-        <div class="filtros">
-            <label for="filtro-grado">Grado (Curso):</label>
-            <select id="filtro-grado">
-                <option value="">-- Todos los Grados --</option>
-            </select>
+        
+        <section id="registro" class="content-section active">
 
-            <label for="filtro-grupo">Grupo:</label>
-            <select id="filtro-grupo" disabled>
-                <option value="">-- Todos los Grupos --</option>
-            </select>
+            <div class="summary-cards-grid">
+                <div class="summary-card out-count">
+                    <span class="card-icon">🚶</span>
+                    <div class="card-info">
+                        <span class="card-title">Estudiantes Fuera</span>
+                        <span class="card-value" id="count-out">0</span>
+                    </div>
+                </div>
+                <div class="summary-card total-count">
+                    <span class="card-icon">📚</span>
+                    <div class="card-info">
+                        <span class="card-title">Total de Estudiantes</span>
+                        <span class="card-value" id="count-total">0</span>
+                    </div>
+                </div>
+                <div class="summary-card avg-time">
+                    <span class="card-icon">⏱️</span>
+                    <div class="card-info">
+                        <span class="card-title">Tiempo Promedio Fuera</span>
+                        <span class="card-value" id="avg-time-out">0 min</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="controls-bar">
+                <input type="text" id="search-input" placeholder="Buscar por Nombre o ID..." class="search-input">
+
+                <div class="filtros">
+                    <label for="filtro-grado">Grado:</label>
+                    <select id="filtro-grado">
+                        <option value="">Todos</option>
+                    </select>
+                    <label for="filtro-grupo">Grupo:</label>
+                    <select id="filtro-grupo" disabled>
+                        <option value="">Todos</option>
+                    </select>
+                    <span class="limite-info">Máx. Fuera: <span id="max-limit">2</span></span>
+                </div>
+            </div>
+
+            <section class="estudiantes-lista">
+                <h2>Alumnos</h2>
+                <div id="estudiantes-container">
+                    <p>Cargando datos...</p>
+                </div>
+            </section>
+        </section>
+
+        <section id="estadisticas" class="content-section">
+            <h2>Estadísticas de Uso</h2>
+            <p>Aquí se mostrarán los datos históricos y las gráficas avanzadas.</p>
             
-            <span class="limite-info">Máx. Fuera por Grupo: <span id="max-limit">2</span></span>
-        </div>
-
-        <section class="dashboard">
-            <h2>Estadísticas Rápidas</h2>
-            <div class="grafico-container">
-                <canvas id="statusChart"></canvas>
+            <div class="stats-grid">
+                <div class="grafico-container">
+                    <canvas id="statusChart"></canvas>
+                </div>
+                <div class="grafico-container">
+                    <canvas id="timeChart"></canvas>
+                </div>
             </div>
         </section>
 
-        <section class="estudiantes-lista">
-            <h2>Registro de Estudiantes</h2>
-            <div id="estudiantes-container">
-                <p>Cargando datos...</p>
-            </div>
-        </section>
     </main>
 
     <script src="script.js"></script>
