@@ -3,16 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cargador de Estudiantes</title>
+    <title>Cargador de Estudiantes - Filtrado</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
     <header>
-        <h1>Lista de Estudiantes Cargados</h1>
+        <h1>Lista de Estudiantes</h1>
     </header>
     
     <main>
+        <div class="filtros">
+            <label for="filtro-grado">Filtrar por Grado (Curso):</label>
+            <select id="filtro-grado">
+                <option value="">-- Todos los Grados --</option>
+                </select>
+
+            <label for="filtro-grupo">Filtrar por Grupo:</label>
+            <select id="filtro-grupo" disabled>
+                <option value="">-- Todos los Grupos --</option>
+                </select>
+        </div>
+
         <div id="estudiantes-container">
             <p>Cargando datos...</p>
         </div>
