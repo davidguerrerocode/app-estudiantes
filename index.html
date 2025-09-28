@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Break - Dashboard</title>
+    <title>Smart Break - Dashboard Avanzado</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -22,6 +22,11 @@
     <main>
         
         <section id="registro" class="content-section active">
+
+            <h2>Control de Salidas (Actualmente Fuera)</h2>
+            <div id="out-students-dashboard" class="estudiantes-lista out-dashboard-grid">
+                <p>Ningún estudiante fuera de clase.</p>
+            </div>
 
             <div class="summary-cards-grid">
                 <div class="summary-card out-count">
@@ -59,18 +64,13 @@
                     <select id="filtro-grupo" disabled>
                         <option value="">Todos</option>
                     </select>
-                    
-                    <div class="group-status-box">
-                        <span class="limite-info">Máx. Fuera: <span id="max-limit">2</span></span>
-                        <div id="group-status-indicator" class="status-indicator"></div>
-                    </div>
                 </div>
             </div>
 
             <section class="estudiantes-lista">
-                <h2>Alumnos</h2>
+                <h2>Búsqueda de Alumnos</h2>
                 <div id="estudiantes-container">
-                    <p>Cargando datos...</p>
+                    <p>Utilice la búsqueda o los filtros para mostrar la lista completa de alumnos.</p>
                 </div>
             </section>
         </section>
@@ -90,6 +90,11 @@
             <h3>Ranking: Alumnos con más tiempo fuera (Hoy)</h3>
             <div id="ranking-container" class="ranking-table-container">
                 <p>Calculando ranking...</p>
+            </div>
+
+            <h3>Historial de Movimientos</h3>
+            <div id="historial-container" class="ranking-table-container">
+                <p>Cargando historial...</p>
             </div>
             
         </section>
