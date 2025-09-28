@@ -1,12 +1,13 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- ESTADO GLOBAL & DOM ---
-    let allStudents = [], allHistory = [], outOfClassroom = [], activeGroup = null, currentStudentId = null;
+    let allStudents = [], allHistory = [], outOfClassroom = [], activeGroup = null;
     let charts = { reasons: null, students: null, hourly: null, avgDuration: null, groupDepartures: null };
     let timers = {};
+    let currentStudentId = null;
     
-    // Configuración inicial de motivos y tiempos de alerta (en minutos)
+    // Configuración inicial de motivos (se carga desde localStorage después)
     let settings = { 
-        alertThreshold: 10, // Fallback si un motivo se borra accidentalmente
+        alertThreshold: 10, 
         departureReasons: [ 
             { name: "Baño", time: 5 }, 
             { name: "Coordinación", time: 10 }, 
@@ -42,40 +43,57 @@ document.addEventListener('DOMContentLoaded', () => {
         saveSettingsBtn: document.getElementById('save-settings-btn'),
         exportCsvBtn: document.getElementById('export-csv'), 
         exportPdfBtn: document.getElementById('export-pdf'),
+        toastContainer: document.getElementById('toast-container'),
+        themeToggle: document.getElementById('theme-toggle'),
     };
     
-    // --- UTILIDADES ---
+    // --- UTILIDADES Y TOASTS ---
     const toggleLoader = (show) => dom.loader.style.display = show ? 'flex' : 'none';
 
-    // Función clave: Obtiene el tiempo de alerta (en minutos) de un motivo
     function getAlertThresholdByReason(reasonName) {
         const reason = settings.departureReasons.find(r => r.name === reasonName);
-        return reason ? reason.time : settings.alertThreshold; // Usa el tiempo específico o el global (10 min) como fallback
+        return reason ? reason.time : settings.alertThreshold; 
     }
 
-    // --- TOAST NOTIFICATIONS ---
-    const toastContainer = document.getElementById('toast-container');
     function showToast(message, type = 'success') { 
         const toast = document.createElement('div'); 
-        toast.className = `toast toast-${type}`; 
+        const baseClass = 'toast p-3 rounded-lg text-white font-semibold shadow-xl transition-all duration-300';
+        const typeClasses = { success: 'bg-green-600', error: 'bg-red-600', info: 'bg-indigo-600' };
+        
+        toast.className = `${baseClass} ${typeClasses[type]}`; 
         toast.textContent = message; 
-        toastContainer.appendChild(toast); 
-        setTimeout(() => toast.remove(), 3000); 
+        
+        // Animación de entrada
+        toast.style.opacity = 0;
+        toast.style.transform = 'translateY(-10px)';
+        requestAnimationFrame(() => {
+            toast.style.opacity = 1;
+            toast.style.transform = 'translateY(0)';
+        });
+
+        dom.toastContainer.appendChild(toast); 
+        
+        // Animación de salida
+        setTimeout(() => {
+            toast.style.opacity = 0;
+            toast.style.transform = 'translateY(-10px)';
+            setTimeout(() => toast.remove(), 300); 
+        }, 3000); 
     }
     
     // --- TEMA ---
-    const themeToggle = document.getElementById('theme-toggle');
     const applyTheme = (theme) => { 
-        document.documentElement.classList.toggle('dark', theme === 'dark'); 
-        document.getElementById('theme-icon-sun').classList.toggle('hidden', theme === 'dark'); 
-        document.getElementById('theme-icon-moon').classList.toggle('hidden', theme !== 'dark'); 
-        renderAll(); 
+        const isDark = theme === 'dark';
+        document.documentElement.classList.toggle('dark', isDark); 
+        localStorage.setItem('theme', theme); 
+        renderAll(); // Forzar el redibujo de gráficos con los nuevos colores
     };
+    
     const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     applyTheme(savedTheme);
-    themeToggle.addEventListener('click', () => { 
+    
+    dom.themeToggle.addEventListener('click', () => { 
         const newTheme = document.documentElement.classList.contains('dark') ? 'light' : 'dark'; 
-        localStorage.setItem('theme', newTheme); 
         applyTheme(newTheme); 
     });
     
@@ -89,36 +107,31 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function saveSettings() { 
-        // Recolectar los nuevos tiempos de los inputs antes de guardar
         dom.reasonsTimeList.querySelectorAll('.reason-time-input').forEach(input => {
             const name = input.dataset.reasonName;
             const newTime = parseInt(input.value) || 1;
             const reasonIndex = settings.departureReasons.findIndex(r => r.name === name);
             if(reasonIndex > -1) {
-                // Asegura que el tiempo sea al menos 1 minuto
                 settings.departureReasons[reasonIndex].time = Math.max(1, newTime); 
             }
         });
 
         localStorage.setItem('smartBreakSettings', JSON.stringify(settings)); 
-        showToast('Configuración de motivos y tiempos guardada.', 'success'); 
-        // Renderizar el Dashboard para aplicar los nuevos límites de alerta
+        showToast('Configuración de límites guardada.', 'success'); 
         renderOutOfClassroom(); 
     }
     
     function renderReasonsList() { 
-        // Renderiza la lista de motivos y sus tiempos en la pestaña Configuración
         dom.reasonsTimeList.innerHTML = settings.departureReasons.map((r, i) => 
-            `<div class="flex justify-between items-center p-3 rounded card">
+            `<div class="flex justify-between items-center p-3 rounded-lg card shadow-sm">
                 <span class="font-medium">${r.name}</span>
                 <div class="flex items-center gap-2">
                     <input type="number" data-reason-name="${r.name}" value="${r.time}" min="1" class="reason-time-input w-16 p-1 text-center rounded-md" style="border: 1px solid var(--border-color)">
                     <span class="text-sm" style="color: var(--text-secondary)">min</span>
-                    <button data-index="${i}" class="remove-reason-btn text-red-500 font-bold text-xl px-2">&times;</button>
+                    <button data-index="${i}" class="remove-reason-btn text-red-500 hover:text-red-700 font-bold text-xl px-2">&times;</button>
                 </div>
             </div>`).join(''); 
             
-        // Rellenar el Select del Modal (solo con nombres)
         dom.departureReason.innerHTML = settings.departureReasons.map(r => `<option>${r.name}</option>`).join(''); 
     }
     
@@ -145,7 +158,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Motivo de salida eliminado.', 'error');
     }
 
-    // Almacenamiento Local (Caché de emergencia/Offline)
+    // Funciones de caché
     function saveSession() { localStorage.setItem('smartBreakSession', JSON.stringify(outOfClassroom)); }
     function loadSession() { try { const s = localStorage.getItem('smartBreakSession'); if(s) outOfClassroom = JSON.parse(s); } catch(e){ outOfClassroom = []; } }
     function saveStudentCache() { localStorage.setItem('smartBreakStudents', JSON.stringify(allStudents)); }
@@ -187,13 +200,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const showDateFilter = ['analytics', 'history'].includes(tabId);
         dom.dateFilterSection.classList.toggle('hidden', !showDateFilter);
 
-        // Si se cambia a Configuración, asegurarse de que los motivos estén al día
         if (tabId === 'settings') { renderReasonsList(); }
     }
     
+    /** Renderiza la lista de grupos en formato acordeón (Grado > Grupo) */
     function populateGroupList() {
         if (allStudents.length === 0) return;
 
+        // 1. Obtener y ordenar los grados
         const grades = [...new Set(allStudents.map(s => s.grade))];
         const gradeOrder = ["PRE-JARDIN", "JARDIN", "TRANSICION", "PRIMERO", "SEGUNDO", "TERCERO", "CUARTO", "QUINTO", "SEXTO", "SEPTIMO", "OCTAVO", "NOVENO", "DECIMO", "UNDECIMO"];
         grades.sort((a, b) => {
@@ -204,40 +218,47 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         dom.groupList.innerHTML = grades.map(g => { 
+            // 2. Obtener y ordenar los grupos dentro del grado
             const groupsInGrade = [...new Set(allStudents.filter(s => s.grade === g).map(s => s.group))].sort((a,b) => a.localeCompare(b, undefined, {numeric: true}));
             
+            // 3. Determinar si algún grupo del acordeón está activo
             const gradeIsActive = groupsInGrade.some(gr => activeGroup === `${g} - ${gr}`);
             
-            // Renderiza el botón de grado (acordeón)
+            // 4. Renderizar el componente de acordeón
             return `<div class="accordion-item">
-                <button class="accordion-header w-full flex justify-between items-center p-3 rounded-md transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 ${gradeIsActive ? 'open' : ''}" style="color: var(--text-primary)">
+                <button class="accordion-header w-full flex justify-between items-center p-3 rounded-lg transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 ${gradeIsActive ? 'open' : ''}" style="color: var(--text-primary)">
                     <span class="font-semibold">${g}</span>
                     <svg class="accordion-arrow w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                 </button>
                 <div class="accordion-content pl-4 pt-1" style="color: var(--text-primary); max-height: ${gradeIsActive ? 'fit-content' : '0'}">
                     ${groupsInGrade.map(gr => 
-                        // Renderiza el botón de grupo
-                        `<button class="w-full text-left p-2 rounded-md transition-colors group-btn ${activeGroup === `${g} - ${gr}` ? 'group-btn-active' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}" data-group="${g} - ${gr}">Grupo ${gr}</button>`
+                        `<button class="w-full text-left p-2 rounded-lg transition-colors group-btn ${activeGroup === `${g} - ${gr}` ? 'group-btn-active' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}" data-group="${g} - ${gr}">${g} - ${gr}</button>`
                     ).join('')}
                 </div>
             </div>`;
         }).join('');
         
-        // Lógica de Acordeón
+        // 5. Aplicar lógica de Acordeón
         document.querySelectorAll('.accordion-header').forEach(h => {
             const c = h.nextElementSibling;
-            if (h.classList.contains('open')) {
-                 c.style.maxHeight = `${c.scrollHeight}px`;
-            }
+            if (h.classList.contains('open')) { c.style.maxHeight = `${c.scrollHeight}px`; }
 
             h.addEventListener('click', () => { 
                 h.classList.toggle('open'); 
-                // Toggle del max-height para animación CSS
-                c.style.maxHeight = c.style.maxHeight === 'fit-content' || c.style.maxHeight === '' || c.style.maxHeight === null || c.style.maxHeight === '0px' ? `${c.scrollHeight}px` : '0px'; 
+                const isOpen = h.classList.contains('open');
+                c.style.maxHeight = isOpen ? `${c.scrollHeight}px` : '0px'; 
+                
+                // Cierra otros acordeones para mantener la limpieza
+                document.querySelectorAll('.accordion-header').forEach(otherH => {
+                    if (otherH !== h) {
+                        otherH.classList.remove('open');
+                        otherH.nextElementSibling.style.maxHeight = '0px';
+                    }
+                });
             });
         });
         
-        // Listener para seleccionar grupo
+        // 6. Listener para selección de grupo
         document.querySelectorAll('.group-btn').forEach(b => b.addEventListener('click', (e) => { 
             activeGroup = b.dataset.group;
             document.querySelectorAll('.group-btn').forEach(btn => btn.classList.remove('group-btn-active'));
@@ -246,6 +267,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }));
     }
 
+    /** Renderiza los estudiantes del grupo activo */
     function renderStudents() {
         if (!activeGroup) { 
             dom.studentList.innerHTML = ''; 
@@ -271,28 +293,28 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         dom.studentList.innerHTML = toShow.map(s => { 
-            const studentId = s.name; // Usamos el nombre como ID local
+            const studentId = s.name; 
             const isOut = outOfClassroom.some(o => o.id === studentId); 
             
-            return `<div class="flex items-center justify-between p-4">
-                <span class="font-medium">${s.name}</span>
+            return `<div class="flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors rounded-lg">
+                <span class="font-medium">${s.name} (${s.grade} - ${s.group})</span>
                 <button onclick="toggleModal(true, '${studentId}')" 
                     class="text-sm px-3 py-1 rounded-full text-white transition-colors 
-                    ${isOut ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}" 
+                    ${isOut ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 shadow-md'}" 
                     ${isOut ? 'disabled' : ''}>
-                    Salida
+                    ${isOut ? 'Fuera' : 'Registrar Salida'}
                 </button>
             </div>`; 
         }).join('');
     }
 
+    /** Inicia/Actualiza el temporizador de alerta para un estudiante */
     function startTimer(student) {
         if (timers[student.id]) clearInterval(timers[student.id]);
         
         const timerElement = document.getElementById(`timer-${student.id}`);
         if (!timerElement) return;
         
-        // Obtiene el límite de alerta específico para el motivo de este estudiante
         const threshold = getAlertThresholdByReason(student.reason);
 
         const updateTimer = () => {
@@ -301,15 +323,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const minutes = Math.floor(totalSeconds / 60);
             const seconds = totalSeconds % 60;
             
-            const minStr = minutes.toString().padStart(2, '0');
-            const secStr = seconds.toString().padStart(2, '0');
-            
-            timerElement.textContent = `${minStr}:${secStr}`;
+            timerElement.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
             
             const diffMins = minutes + (seconds / 60);
             const card = timerElement.closest('.card');
             if(card) {
-                // Usa el threshold específico del motivo para aplicar la alerta
                 card.classList.toggle('long-absence-alert', diffMins > threshold); 
             }
         };
@@ -318,6 +336,7 @@ document.addEventListener('DOMContentLoaded', () => {
         timers[student.id] = setInterval(updateTimer, 1000);
     }
     
+    /** Renderiza la lista de estudiantes actualmente fuera */
     function renderOutOfClassroom() {
         Object.values(timers).forEach(clearInterval);
         timers = {};
@@ -329,17 +348,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const diffMins = (new Date() - new Date(s.time)) / 60000; 
             const alertClass = diffMins > threshold ? 'long-absence-alert' : ''; 
             
-            return `<div class="card p-4 rounded-lg shadow-md flex flex-col justify-between animate-fade-in border-l-4 ${alertClass}" style="border-color: var(--text-accent)">
+            return `<div class="card p-4 rounded-xl shadow-lg flex flex-col justify-between animate-fade-in border-l-4 ${alertClass}" style="border-color: var(--text-accent)">
                 <div>
                     <p class="font-bold text-lg">${s.name}</p>
-                    <p class="text-sm" style="color: var(--text-secondary)">${s.reason} (Límite: ${threshold}m)</p>
-                    <p class="text-xs mt-1" style="color: var(--text-secondary)">Salió: ${new Date(s.time).toLocaleTimeString()}</p>
+                    <p class="text-sm" style="color: var(--text-secondary)">Motivo: ${s.reason} (Límite: ${threshold}m)</p>
+                    <p class="text-xs mt-1" style="color: var(--text-secondary)">Salida: ${new Date(s.time).toLocaleTimeString()}</p>
                 </div>
                 <div class="mt-4">
-                    <p id="timer-${s.id}" class="text-center font-mono text-xl text-red-600 dark:text-red-500 mb-2">00:00</p>
+                    <p id="timer-${s.id}" class="text-center font-mono text-xl text-red-600 dark:text-red-500 mb-2 font-bold">00:00</p>
                     <button onclick="returnStudent('${s.id}')" 
-                        class="w-full py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors">
-                        Regresar
+                        class="w-full py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold shadow-md">
+                        Regresar a Aula
                     </button>
                 </div>
             </div>`; 
@@ -348,28 +367,7 @@ document.addEventListener('DOMContentLoaded', () => {
         outOfClassroom.forEach(startTimer);
     }
 
-    function renderHistoryTable(historyData) {
-        if (historyData.length === 0) { 
-            dom.historyTableBody.innerHTML = `<tr><td colspan="5" class="text-center p-8" style="color: var(--text-secondary)">No hay registros para las fechas seleccionadas.</td></tr>`; 
-            return; 
-        }
-        
-        dom.historyTableBody.innerHTML = historyData.slice().reverse().map(h => {
-            const departure = h.departureTime ? new Date(h.departureTime).toLocaleString() : '---';
-            const retorno = h.returnTime ? new Date(h.returnTime).toLocaleString() : '---';
-            const duracion = h.duration || '---';
-
-            return `<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
-                <td class="p-4 font-medium">${h.name}</td>
-                <td class="p-4">${h.reason}</td>
-                <td class="p-4">${departure}</td>
-                <td class="p-4">${retorno}</td>
-                <td class="p-4">${duracion}</td>
-            </tr>`;
-        }).join('');
-    }
-
-    // Funciones de simulación de Salida/Regreso (MODO LOCAL)
+    /** Funciones de Simulación (Manejo de Modal, Salida y Regreso) */
     window.toggleModal = (show, id = null) => {
         currentStudentId = id;
         if (id) {
@@ -386,7 +384,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const t = new Date(), t_iso = t.toISOString(), r = dom.departureReason.value, n = s.name; 
             const studentId = n; 
             
-            // Simulación local de salida
             outOfClassroom.push({ id: studentId, name: n, reason: r, time: t_iso }); 
             allHistory.push({ studentId: studentId, name: n, reason: r, departureTime: t_iso, timestamp: new Date().toISOString(), returnTime: null, duration: null }); 
             
@@ -394,7 +391,7 @@ document.addEventListener('DOMContentLoaded', () => {
             saveHistoryCache(); 
             renderAll(); 
             toggleModal(false); 
-            showToast(`Salida de ${n} registrada.`, 'info'); 
+            showToast(`Salida de ${n} (${r}) registrada.`, 'info'); 
         } 
     };
 
@@ -406,7 +403,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const d_s = Math.floor((t - new Date(s.time)) / 1000); 
             const d = `${Math.floor(d_s / 60)}m ${d_s % 60}s`; 
             
-            // Simulación local de regreso
             const h = allHistory.find(h => h.studentId === id && !h.returnTime); 
             if(h) { h.returnTime = t_iso; h.duration = d; } 
             
@@ -417,132 +413,112 @@ document.addEventListener('DOMContentLoaded', () => {
             saveSession(); 
             saveHistoryCache(); 
             renderAll(); 
-            showToast(`Regreso de ${s.name} registrado.`, 'success'); 
+            showToast(`Regreso de ${s.name} registrado. (Duración: ${d})`, 'success'); 
         } else {
              showToast('Error: El estudiante ya no aparece como ausente.', 'error');
         }
     };
     
-    // --- ANALYTICS & EXPORTS ---
+    // --- ANALYTICS & STATS ---
+
+    function getChartColors() {
+        const isDark = document.documentElement.classList.contains('dark');
+        const accent = getComputedStyle(document.documentElement).getPropertyValue('--text-accent').trim();
+        const primary = getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim();
+        const secondary = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
+        
+        return {
+            accent, primary, secondary,
+            grid: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
+            pieColors: ['#4f46e5', '#f97316', '#10b981', '#ef4444', '#f59e0b', '#3b82f6'].map(c => isDark ? c.replace('e5', 'f0').replace('9e', 'b3').replace('10', '22').replace('44', '60').replace('73', '90').replace('82', 'a0') : c),
+        };
+    }
 
     function renderAnalytics(historyData) {
-        // ... Lógica de recopilación de datos para gráficos ...
-        const data = {
-            hourly: new Array(24).fill(0),
-            groupDepartures: {},
-            reasons: {},
-            avgDuration: {},
-            students: {}
-        };
+        const colors = getChartColors();
         
-        let totalDurationSeconds = 0;
-        let departuresToday = 0;
-        const today = new Date().toDateString();
-
+        // --- 1. Recolección de Datos ---
+        const data = { hourly: new Array(24).fill(0), groupDepartures: {}, reasons: {}, avgDuration: {}, students: {} };
         historyData.forEach(h => {
-            // Recopilación de salidas por hora y hoy
             if (h.departureTime) {
                 const hour = new Date(h.departureTime).getHours();
                 data.hourly[hour]++;
-                if (new Date(h.departureTime).toDateString() === today) {
-                    departuresToday++;
-                }
             }
-
-            // Recopilación de salidas por grupo y estudiante
             const studentInfo = allStudents.find(s => s.name === h.name);
             if (studentInfo) {
                 const groupKey = `${studentInfo.grade} - ${studentInfo.group}`;
                 data.groupDepartures[groupKey] = (data.groupDepartures[groupKey] || 0) + 1;
                 data.students[h.name] = (data.students[h.name] || 0) + 1;
             }
-
-            // Recopilación de motivos
             data.reasons[h.reason] = (data.reasons[h.reason] || 0) + 1;
             
-            // Recopilación de duración promedio
             if (h.duration) {
                 const parts = h.duration.match(/(\d+)m (\d+)s/);
                 if (parts) {
                     const durationSec = (parseInt(parts[1]) * 60) + parseInt(parts[2]);
-                    data.avgDuration[h.reason] = { 
-                        totalSec: (data.avgDuration[h.reason]?.totalSec || 0) + durationSec,
-                        count: (data.avgDuration[h.reason]?.count || 0) + 1
-                    };
-                    totalDurationSeconds += durationSec;
+                    data.avgDuration[h.reason] = { totalSec: (data.avgDuration[h.reason]?.totalSec || 0) + durationSec, count: (data.avgDuration[h.reason]?.count || 0) + 1 };
                 }
             }
         });
-        
-        const avgDurationData = Object.entries(data.avgDuration).map(([reason, { totalSec, count }]) => ({
-            reason,
-            avg: totalSec / count
-        }));
+        const avgDurationData = Object.entries(data.avgDuration).map(([reason, { totalSec, count }]) => ({ reason, avg: totalSec / count }));
+        const sortedStudents = Object.entries(data.students).sort(([, a], [, b]) => b - a).slice(0, 10);
 
-        const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--text-accent').trim();
-        const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim();
-        
-        // Opciones base para los gráficos
-        const chartOptions = (title) => ({
+        // --- 2. Opciones Base ---
+        const chartOptions = (title, type = 'bar') => ({
             responsive: true, maintainAspectRatio: false, plugins: { 
-                legend: { labels: { color: primaryColor } }, 
-                title: { display: true, text: title, color: primaryColor } 
+                legend: { labels: { color: colors.primary, font: { family: 'Inter' } } }, 
+                title: { display: false } // Título ya está en el HTML
             }, 
-            scales: { 
-                x: { ticks: { color: primaryColor }, grid: { color: 'rgba(156, 163, 175, 0.1)' } },
-                y: { ticks: { color: primaryColor }, grid: { color: 'rgba(156, 163, 175, 0.1)' } } 
-            }
+            scales: type !== 'doughnut' && type !== 'pie' ? { 
+                x: { ticks: { color: colors.secondary }, grid: { color: colors.grid } },
+                y: { ticks: { color: colors.secondary }, grid: { color: colors.grid } } 
+            } : {},
+            // Mejora de fuente para legibilidad
+            font: { family: 'Inter', color: colors.primary }
         });
         
-        // Destrucción de gráficos previos
-        ['hourly', 'groupDepartures', 'avgDuration', 'reasons', 'students'].forEach(key => {
-            if (charts[key]) charts[key].destroy();
-        });
+        // --- 3. Destruir y Crear Gráficos ---
+        Object.values(charts).forEach(chart => { if (chart) chart.destroy(); });
 
         // Gráfico 1: Salidas por Hora del Día
         charts.hourly = new Chart(document.getElementById('hourly-chart').getContext('2d'), {
             type: 'bar', data: {
                 labels: Array.from({ length: 24 }, (_, i) => `${i}:00`),
-                datasets: [{ label: 'Número de Salidas', data: data.hourly, backgroundColor: accentColor, }]
+                datasets: [{ label: 'Salidas', data: data.hourly, backgroundColor: colors.accent, borderRadius: 5 }]
             }, options: chartOptions('Salidas por Hora del Día')
         });
 
-        // Gráfico 2: Salidas por Grupo (Pie)
+        // Gráfico 2: Salidas por Grupo (Donut)
         charts.groupDepartures = new Chart(document.getElementById('group-departures-chart').getContext('2d'), {
-            type: 'pie', data: {
+            type: 'doughnut', data: {
                 labels: Object.keys(data.groupDepartures),
-                datasets: [{ data: Object.values(data.groupDepartures),
-                    backgroundColor: ['#4f46e5', '#818cf8', '#6366f1', '#a5b4fc', '#c7d2fe', '#e0e7ff'].slice(0, Object.keys(data.groupDepartures).length),
-                }]
-            }, options: chartOptions('Salidas por Grupo')
+                datasets: [{ data: Object.values(data.groupDepartures), backgroundColor: colors.pieColors }]
+            }, options: chartOptions('Distribución por Grupo', 'doughnut')
         });
 
-        // Gráfico 3: Duración Promedio por Motivo (Barra)
+        // Gráfico 3: Duración Promedio por Motivo
         charts.avgDuration = new Chart(document.getElementById('avg-duration-chart').getContext('2d'), {
             type: 'bar', data: {
                 labels: avgDurationData.map(d => d.reason),
-                datasets: [{ label: 'Duración Promedio (segundos)', data: avgDurationData.map(d => d.avg), backgroundColor: '#f59e0b', }]
+                datasets: [{ label: 'Segundos', data: avgDurationData.map(d => d.avg), backgroundColor: '#f59e0b', borderRadius: 5 }]
             }, options: chartOptions('Duración Promedio por Motivo')
         });
         
-        // Gráfico 4: Motivos de Salida (Doughnut)
+        // Gráfico 4: Motivos de Salida (Pie)
         charts.reasons = new Chart(document.getElementById('reasons-chart').getContext('2d'), {
-            type: 'doughnut', data: {
+            type: 'pie', data: {
                 labels: Object.keys(data.reasons),
-                datasets: [{ data: Object.values(data.reasons),
-                    backgroundColor: ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6'].slice(0, Object.keys(data.reasons).length),
-                }]
-            }, options: chartOptions('Motivos de Salida')
+                datasets: [{ data: Object.values(data.reasons), backgroundColor: ['#ef4444', '#10b981', '#3b82f6', '#f59e0b', '#8b5cf6'] }]
+            }, options: chartOptions('Proporción de Motivos', 'pie')
         });
 
         // Gráfico 5: Estudiantes con Más Salidas (Barra horizontal)
-        const sortedStudents = Object.entries(data.students).sort(([, a], [, b]) => b - a).slice(0, 10);
         charts.students = new Chart(document.getElementById('students-chart').getContext('2d'), {
             type: 'bar', data: {
                 labels: sortedStudents.map(([name]) => name),
-                datasets: [{ label: 'Número de Salidas', data: sortedStudents.map(([, count]) => count), backgroundColor: '#10b981', }]
+                datasets: [{ label: 'Número de Salidas', data: sortedStudents.map(([, count]) => count), backgroundColor: '#10b981', borderRadius: 5 }]
             }, options: {
-                ...chartOptions('Estudiantes con Más Salidas (Top 10)'), indexAxis: 'y',
+                ...chartOptions('Top 10 Estudiantes con Más Salidas'), indexAxis: 'y',
             }
         });
     }
@@ -572,7 +548,78 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('stat-avg-duration-today').textContent = `${avgMinToday}m ${avgSecRemaining}s`;
     }
 
-    function exportToCSV() {
+    function renderHistoryTable(historyData) {
+        if (historyData.length === 0) { 
+            dom.historyTableBody.innerHTML = `<tr><td colspan="5" class="text-center p-8" style="color: var(--text-secondary)">No hay registros para las fechas seleccionadas.</td></tr>`; 
+            return; 
+        }
+        
+        dom.historyTableBody.innerHTML = historyData.slice().reverse().map(h => {
+            const departure = h.departureTime ? new Date(h.departureTime).toLocaleString() : '---';
+            const retorno = h.returnTime ? new Date(h.returnTime).toLocaleString() : '---';
+            const duracion = h.duration || '---';
+
+            return `<tr class="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                <td class="p-4 font-medium">${h.name}</td>
+                <td class="p-4">${h.reason}</td>
+                <td class="p-4">${departure}</td>
+                <td class="p-4">${retorno}</td>
+                <td class="p-4">${duracion}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    // --- INIT & LISTENERS ---
+    dom.tabs.forEach(t => t.addEventListener('click', () => setActiveTab(t.dataset.tab)));
+    dom.searchFilter.addEventListener('input', renderStudents);
+    [dom.startDate, dom.endDate].forEach(i => i.addEventListener('change', renderAll));
+    dom.resetDatesBtn.addEventListener('click', () => { dom.startDate.value = ''; dom.endDate.value = ''; renderAll(); });
+    
+    dom.saveSettingsBtn.addEventListener('click', saveSettings);
+    dom.addReasonBtn.addEventListener('click', addReason);
+    dom.reasonsTimeList.addEventListener('click', (e) => { 
+        if (e.target.classList.contains('remove-reason-btn')) { removeReason(e.target.dataset.index); }
+    });
+    
+    dom.exportCsvBtn.addEventListener('click', exportToCSV);
+    dom.exportPdfBtn.addEventListener('click', exportToPDF);
+
+    async function initializeApp() {
+        toggleLoader(true);
+        loadSettings();
+        loadSession();
+        loadHistoryCache();
+        
+        // CORRECCIÓN CLAVE: Carga el JSON usando ruta relativa (debe estar en la misma carpeta)
+        try {
+            const response = await fetch('datos_estudiantes.json');
+            if (!response.ok) {
+                loadStudentCache(); 
+                throw new Error(`Fallo de red o archivo JSON no encontrado/accesible. Código: ${response.status}`);
+            }
+            const data = await response.json();
+            allStudents = data; 
+            saveStudentCache(); 
+            showToast('Datos de estudiantes cargados.', 'success');
+        } catch (e) {
+            if (allStudents.length === 0) { 
+                showToast(`ERROR CRÍTICO: No se pudieron cargar los datos de estudiantes. Revisa tu archivo JSON.`, 'error');
+            } else {
+                showToast(`ADVERTENCIA: Falló carga JSON. Usando ${allStudents.length} estudiantes de la caché.`, 'info');
+            }
+            console.error(e);
+        }
+
+        renderAll(); 
+        setActiveTab('dashboard');
+        toggleLoader(false);
+        showToast('Aplicación iniciada. Los datos de sesión y registro se guardan en el navegador.', 'info');
+    }
+    
+    initializeApp();
+    
+    // --- EXPORT FUNCTIONS (No se modifican) ---
+    function exportToCSV() { /* ... Lógica CSV ... */ 
         const historyData = getFilteredHistory();
         if (historyData.length === 0) { showToast('No hay datos para exportar.', 'error'); return; }
 
@@ -601,7 +648,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Historial exportado a CSV.', 'success');
     }
 
-    function exportToPDF() {
+    function exportToPDF() { /* ... Lógica PDF ... */ 
         const historyData = getFilteredHistory();
         if (historyData.length === 0) { showToast('No hay datos para exportar.', 'error'); return; }
         
@@ -616,7 +663,9 @@ document.addEventListener('DOMContentLoaded', () => {
             h.duration || '---'
         ]);
 
-        doc.autoTable(columns, data, {
+        doc.autoTable({
+            head: [columns],
+            body: data,
             startY: 20,
             headStyles: { fillColor: [79, 70, 229] }, 
             styles: { fontSize: 8 },
@@ -626,54 +675,4 @@ document.addEventListener('DOMContentLoaded', () => {
         doc.save('smart_break_historial.pdf');
         showToast('Historial exportado a PDF.', 'success');
     }
-
-    // --- INIT & LISTENERS ---
-    dom.tabs.forEach(t => t.addEventListener('click', () => setActiveTab(t.dataset.tab)));
-    dom.searchFilter.addEventListener('input', renderStudents);
-    [dom.startDate, dom.endDate].forEach(i => i.addEventListener('change', renderAll));
-    dom.resetDatesBtn.addEventListener('click', () => { dom.startDate.value = ''; dom.endDate.value = ''; renderAll(); });
-    
-    dom.saveSettingsBtn.addEventListener('click', saveSettings);
-    dom.addReasonBtn.addEventListener('click', addReason);
-    dom.reasonsTimeList.addEventListener('click', (e) => { 
-        if (e.target.classList.contains('remove-reason-btn')) { removeReason(e.target.dataset.index); }
-    });
-    
-    dom.exportCsvBtn.addEventListener('click', exportToCSV);
-    dom.exportPdfBtn.addEventListener('click', exportToPDF);
-
-    // Función de inicialización con carga de JSON
-    async function initializeApp() {
-        toggleLoader(true);
-        loadSettings();
-        loadSession();
-        loadHistoryCache();
-        
-        // CORRECCIÓN: Asegura que se solicite 'datos_estudiantes.json'
-        try {
-            const response = await fetch('datos_estudiantes.json');
-            if (!response.ok) {
-                loadStudentCache(); 
-                throw new Error(`No se pudo cargar 'datos_estudiantes.json'. Código: ${response.status}`);
-            }
-            const data = await response.json();
-            allStudents = data; 
-            saveStudentCache(); 
-            showToast('Datos de estudiantes cargados.', 'success');
-        } catch (e) {
-            if (allStudents.length === 0) { 
-                showToast(`ERROR CRÍTICO: No hay estudiantes. Revisa el archivo JSON.`, 'error');
-            } else {
-                showToast(`ADVERTENCIA: Falló carga JSON. Usando ${allStudents.length} estudiantes de la caché.`, 'info');
-            }
-            console.error(e);
-        }
-
-        renderAll(); 
-        setActiveTab('dashboard');
-        toggleLoader(false);
-        showToast('Modo de desarrollo local. Los datos se guardan en el navegador.', 'info');
-    }
-    
-    initializeApp();
 });
