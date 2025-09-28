@@ -1,6 +1,7 @@
 // ** CONFIGURACIÓN Y CONSTANTES **
 const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRcumpa6f1_6lkdyOU1hkymg4evm6a1vXFaWfNRDJ-cxM8qqETGPJ6GnfrzYdOdQ8RHxJ3-wuwxymzD/pub?output=csv';
 const MAX_STUDENTS_OUT_PER_GROUP = 2; 
+const MAX_TIME_OUT_MS = 900000; // 15 minutos en milisegundos para la alerta
 
 // Elementos del DOM
 const container = document.getElementById('estudiantes-container');
@@ -9,14 +10,15 @@ const filtroGrupo = document.getElementById('filtro-grupo');
 const searchInput = document.getElementById('search-input');
 const themeToggle = document.getElementById('theme-toggle');
 const maxLimitSpan = document.getElementById('max-limit');
-const rankingContainer = document.getElementById('ranking-container'); // Nuevo
+const rankingContainer = document.getElementById('ranking-container');
+const groupStatusIndicator = document.getElementById('group-status-indicator'); // NUEVO
 
 // Estado Global
 let estudiantesData = []; 
 let estudiantesStatus = {}; 
 let gradosUnicos = new Set();
 let gruposPorGrado = {};
-let studentMetrics = []; // Para las estadísticas avanzadas
+let studentMetrics = [];
 
 // Instancias de Gráficos
 let statusChartInstance = null;
@@ -39,12 +41,10 @@ function loadStatus() {
 }
 
 function formatTime(ms) {
-    // Si el tiempo es menor a 1 minuto, muestra en segundos
     if (ms < 60000) {
         return `${Math.round(ms / 1000)} seg`;
     }
     const minutes = Math.floor(ms / 60000);
-    // Si queremos ser más precisos con minutos y segundos:
     const seconds = Math.round((ms % 60000) / 1000);
     if (seconds > 0 && minutes < 60) {
          return `${minutes} min ${seconds} seg`;
@@ -196,14 +196,46 @@ function aplicarFiltros() {
             (est.ID && String(est.ID).includes(searchText))
         );
     }
+    
+    // PRIORIZACIÓN: Mueve los alumnos FUERA al inicio de la lista filtrada
+    estudiantesFiltrados.sort((a, b) => {
+        const aIsOut = estudiantesStatus[a.ID].state === 'out';
+        const bIsOut = estudiantesStatus[b.ID].state === 'out';
+        return bIsOut - aIsOut; // True (1) va antes que False (0)
+    });
 
     mostrarEstudiantes(estudiantesFiltrados);
+    updateGroupStatusIndicator(gradoSeleccionado, grupoSeleccionado); // NUEVO
 }
 
 
 // ----------------------------------------------------------------------
 // --- LÓGICA DE REGISTRO Y ESTADO ---
 // ----------------------------------------------------------------------
+
+// NUEVA FUNCIÓN: Actualiza el semáforo de grupo
+function updateGroupStatusIndicator(grado, grupo) {
+    if (!groupStatusIndicator) return;
+
+    // Solo muestra el semáforo si se ha seleccionado un grado Y un grupo
+    if (grado && grupo) {
+        groupStatusIndicator.style.display = 'block';
+        const count = countStudentsOutByGroup(grado, grupo);
+        
+        groupStatusIndicator.classList.remove('verde', 'amarillo', 'rojo');
+
+        if (count === 0) {
+            groupStatusIndicator.classList.add('verde');
+        } else if (count >= MAX_STUDENTS_OUT_PER_GROUP) {
+            groupStatusIndicator.classList.add('rojo');
+        } else {
+            groupStatusIndicator.classList.add('amarillo');
+        }
+    } else {
+        groupStatusIndicator.style.display = 'none';
+    }
+}
+
 
 function toggleRegistro(id) {
     const studentStatus = estudiantesStatus[id];
@@ -254,8 +286,10 @@ function updateGlobalStatus() {
 
     for (const id in estudiantesStatus) {
         const status = estudiantesStatus[id];
-        if (status.state === 'out') {
-            outCount++;
+        // Si el alumno está fuera, actualiza su tiempo de sesión actual
+        if (status.state === 'out' && status.outTime) {
+            // Calculamos el tiempo transcurrido desde la salida para la métrica global
+            totalTimeOutMS += (new Date().getTime() - status.outTime);
         }
         totalTimeOutMS += status.totalTimeOut;
     }
@@ -267,7 +301,6 @@ function updateGlobalStatus() {
     const avgTimeMs = totalStudents > 0 ? totalTimeOutMS / totalStudents : 0;
     document.getElementById('avg-time-out').textContent = formatTime(avgTimeMs);
 
-    // Actualiza estadísticas avanzadas cada vez que el estado cambia
     studentMetrics = calculateStudentTimeMetrics();
     updateCharts(outCount, totalStudents - outCount);
     displayStudentRanking(studentMetrics); 
@@ -285,7 +318,17 @@ function mostrarEstudiantes(estudiantesAMostrar) {
         const id = estudiante.ID;
         const grado = estudiante.Grado;
         const grupo = estudiante.Grupo;
-        const isOut = estudiantesStatus[id].state === 'out';
+        const status = estudiantesStatus[id];
+        const isOut = status.state === 'out';
+        
+        // Lógica de Alerta de Tiempo (15 minutos)
+        let isTimeAlert = false;
+        if (isOut && status.outTime) {
+            const timeElapsed = new Date().getTime() - status.outTime;
+            if (timeElapsed > MAX_TIME_OUT_MS) {
+                isTimeAlert = true;
+            }
+        }
         
         const outCount = countStudentsOutByGroup(grado, grupo);
         const limitReached = !isOut && outCount >= MAX_STUDENTS_OUT_PER_GROUP;
@@ -294,8 +337,16 @@ function mostrarEstudiantes(estudiantesAMostrar) {
         card.classList.add('estudiante-card');
         if (isOut) card.classList.add('out');
         if (limitReached) card.classList.add('limit-reached');
+        if (isTimeAlert) card.classList.add('time-alert'); // AÑADIDO: Clase de alerta
         
         const btnText = isOut ? 'Registrar Entrada' : 'Registrar Salida';
+        
+        // Si el alumno está fuera, mostramos el tiempo que lleva fuera en la tarjeta
+        let timeInfo = `Tiempo total fuera: ${formatTime(status.totalTimeOut)}`;
+        if (isOut && status.outTime) {
+            const timeElapsed = new Date().getTime() - status.outTime;
+            timeInfo = `Lleva fuera: ${formatTime(timeElapsed)}<br>Total acumulado: ${formatTime(status.totalTimeOut)}`;
+        }
         
         card.innerHTML = `
             <div class="estudiante-info">
@@ -303,7 +354,7 @@ function mostrarEstudiantes(estudiantesAMostrar) {
             </div>
             <div class="grupo-info">
                 Grado: ${grado} | Grupo: ${grupo}
-                <br>Tiempo total fuera: ${formatTime(estudiantesStatus[id].totalTimeOut)}
+                <br>${timeInfo}
             </div>
             <button class="registro-btn" 
                     data-id="${id}" 
@@ -333,7 +384,6 @@ function calculateStudentTimeMetrics() {
         const id = estudiante.ID;
         const status = estudiantesStatus[id];
         
-        // Sumamos el tiempo acumulado más el tiempo que lleva fuera AHORA MISMO
         let currentTotalTimeOut = status.totalTimeOut;
         if (status.state === 'out' && status.outTime) {
             currentTotalTimeOut += (new Date().getTime() - status.outTime);
@@ -345,8 +395,8 @@ function calculateStudentTimeMetrics() {
             gradeGroup: `${estudiante.Grado}-${estudiante.Grupo}`,
             totalTimeOut: currentTotalTimeOut,
         };
-    }).filter(metric => metric.totalTimeOut > 0) // Solo alumnos que han salido hoy
-      .sort((a, b) => b.totalTimeOut - a.totalTimeOut); // Ordenar de mayor a menor
+    }).filter(metric => metric.totalTimeOut > 0)
+      .sort((a, b) => b.totalTimeOut - a.totalTimeOut);
 
     return metrics;
 }
@@ -372,7 +422,7 @@ function displayStudentRanking(metrics) {
             <tbody>
     `;
 
-    metrics.slice(0, 10).forEach((metric, index) => { // Mostrar top 10
+    metrics.slice(0, 10).forEach((metric, index) => { 
         tableHTML += `
             <tr>
                 <td>${index + 1}</td>
@@ -388,7 +438,7 @@ function displayStudentRanking(metrics) {
 }
 
 function updateTimeChartByGroup(metrics) {
-    const groupTimes = {}; // { '1-A': 150000, '2-B': 300000, ... }
+    const groupTimes = {}; 
 
     metrics.forEach(metric => {
         const key = metric.gradeGroup;
@@ -397,13 +447,13 @@ function updateTimeChartByGroup(metrics) {
     });
 
     const labels = Object.keys(groupTimes).sort();
-    const data = labels.map(key => Math.round(groupTimes[key] / 60000)); // En minutos
+    const data = labels.map(key => Math.round(groupTimes[key] / 60000));
 
     if (timeChartInstance) {
         timeChartInstance.data.labels = labels;
         timeChartInstance.data.datasets[0].data = data;
         timeChartInstance.data.datasets[0].label = 'Tiempo Acumulado (min)';
-        timeChartInstance.data.datasets[0].backgroundColor = labels.map((_, i) => i % 2 === 0 ? '#6A0DAD' : '#9370DB'); // Morados
+        timeChartInstance.data.datasets[0].backgroundColor = labels.map((_, i) => i % 2 === 0 ? '#6A0DAD' : '#9370DB');
         timeChartInstance.options.plugins.title.text = 'Tiempo Total Acumulado por Grado/Grupo';
         timeChartInstance.update();
     }
@@ -415,6 +465,7 @@ function updateTimeChartByGroup(metrics) {
 // ----------------------------------------------------------------------
 
 function initCharts() {
+    // ... (El código de initCharts es el mismo que en la versión anterior)
     const totalStudents = estudiantesData.length;
     const outCount = estudiantesData.filter(est => estudiantesStatus[est.ID].state === 'out').length;
     const inCount = totalStudents - outCount;
@@ -447,7 +498,7 @@ function initCharts() {
             datasets: [{
                 label: 'Tiempo Acumulado (min)',
                 data: [],
-                backgroundColor: '#6A0DAD', // Morado
+                backgroundColor: '#6A0DAD', 
             }]
         },
         options: {
@@ -458,20 +509,18 @@ function initCharts() {
         }
     });
     
-    // Actualizar con datos iniciales
     updateTimeChartByGroup(calculateStudentTimeMetrics());
 }
 
 function updateCharts(outCount, inCount) {
     if (statusChartInstance) {
-        statusChartChartInstance.data.datasets[0].data = [outCount, inCount];
-        const color = document.body.classList.contains('dark-mode') ? '#1e1e1e' : '#fff'; // Fondo de tarjeta
+        statusChartInstance.data.datasets[0].data = [outCount, inCount];
+        const color = document.body.classList.contains('dark-mode') ? '#1e1e1e' : '#fff';
         statusChartInstance.data.datasets[0].borderColor = [color, color];
         statusChartInstance.options.plugins.title.color = document.body.classList.contains('dark-mode') ? '#f0f0f0' : '#2c2c2c';
 
         statusChartInstance.update();
     }
-    // Llama a la actualización del gráfico de grupos cada vez que se actualiza el estado global
     updateTimeChartByGroup(calculateStudentTimeMetrics()); 
 }
 
@@ -497,7 +546,6 @@ function toggleTheme() {
     themeToggle.textContent = isDark ? '☀️' : '🌙';
     localStorage.setItem('theme', isDark ? 'dark' : 'light');
     
-    // Forzar actualización de gráficos para colores de borde/título
     updateGlobalStatus();
 }
 
@@ -519,6 +567,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadTheme();
     handleNavigation();
     
+    // El evento 'change' en filtroGrado ahora también desencadena la actualización del semáforo.
     if (searchInput) searchInput.addEventListener('keyup', aplicarFiltros);
     if (filtroGrado) filtroGrado.addEventListener('change', () => {
         const grado = filtroGrado.value;
@@ -529,4 +578,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (themeToggle) themeToggle.addEventListener('click', toggleTheme);
     
     cargarEstudiantes();
+    
+    // Opcional: Actualizar la visualización cada 5 segundos para tiempo real
+    setInterval(() => {
+        // Solo actualizamos la visualización si estamos en la pestaña de registro activa
+        if (document.getElementById('registro').classList.contains('active')) {
+             aplicarFiltros(); // Esto redibuja las tarjetas y actualiza el tiempo "Lleva fuera"
+        }
+        updateGlobalStatus(); // Esto actualiza los contadores y gráficos
+    }, 5000); 
 });
