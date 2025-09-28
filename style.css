@@ -8,6 +8,11 @@
     --text-light: #ffffff;
     --out-color: #B22222; /* Rojo Ladrillo para Salida */
     --in-color: #28a745;
+    /* Colores del Semáforo */
+    --sem-green: #28a745;
+    --sem-yellow: #ffc107;
+    --sem-red: #dc3545;
+    --alert-bg: #ffe0e6;
 }
 
 /* --- TEMA OSCURO (Negro y Morado) --- */
@@ -17,6 +22,8 @@ body.dark-mode {
     --background-card: #1e1e1e; /* Negro oscuro para tarjetas */
     --text-dark: #f0f0f0;
     --out-color: #ff6347; /* Rojo más brillante */
+    --sem-red: #ff6347;
+    --alert-bg: #331515;
 }
 
 
@@ -63,7 +70,7 @@ main { padding: 20px; max-width: 1200px; margin: 0 auto; }
 .nav-item:hover { color: var(--text-light); }
 .nav-item.active {
     color: var(--text-light);
-    border-bottom: 3px solid var(--accent-color); /* Morado claro o Dorado/Amarillo */
+    border-bottom: 3px solid var(--accent-color);
 }
 
 #theme-toggle {
@@ -129,6 +136,25 @@ body.dark-mode .search-input, body.dark-mode .filtros select {
     gap: 15px;
     align-items: center;
 }
+.group-status-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* ESTILO DEL SEMÁFORO DE GRUPO */
+.status-indicator {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background-color: #ccc; /* Gris por defecto */
+    border: 2px solid #555;
+    transition: background-color 0.3s;
+}
+.status-indicator.verde { background-color: var(--sem-green); border-color: #1e8741; }
+.status-indicator.amarillo { background-color: var(--sem-yellow); border-color: #cc9900; }
+.status-indicator.rojo { background-color: var(--sem-red); border-color: #a80000; }
+
 .limite-info { color: var(--primary-color); }
 #max-limit { color: var(--out-color); font-weight: bold; }
 
@@ -150,13 +176,24 @@ body.dark-mode .search-input, body.dark-mode .filtros select {
     box-shadow: 0 4px 10px rgba(0,0,0,0.1);
 }
 
+/* Estado: Fuera */
 .estudiante-card.out {
-    background-color: #ffe0e6; /* Rosa suave para Fuera */
-    border-left: 5px solid var(--out-color); /* Barra roja lateral */
+    background-color: var(--alert-bg); /* Rosa suave/Gris oscuro */
+    border-left: 5px solid var(--out-color); 
 }
-body.dark-mode .estudiante-card.out {
-    background-color: #331515; 
-    border-left: 5px solid var(--out-color);
+/* Alerta: Fuera por mucho tiempo (>15 min) */
+.estudiante-card.out.time-alert {
+    animation: pulse-border 1.5s infinite;
+    background-color: #ffcccc !important; /* Rojo claro muy visible */
+}
+body.dark-mode .estudiante-card.out.time-alert {
+    background-color: #4d0000 !important;
+}
+
+@keyframes pulse-border {
+    0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4); }
+    70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
 }
 
 .registro-btn {
