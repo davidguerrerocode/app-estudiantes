@@ -3,31 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cargador de Estudiantes - Filtrado</title>
+    <title>Smart Break - Registro de Salidas</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
     <header>
-        <h1>Lista de Estudiantes</h1>
+        <h1>Smart Break</h1>
+        <div id="status-contador">Estudiantes fuera: 0 / Total: 0</div>
+        <button id="theme-toggle">🌙</button> 
     </header>
     
     <main>
         <div class="filtros">
-            <label for="filtro-grado">Filtrar por Grado (Curso):</label>
+            <label for="filtro-grado">Grado (Curso):</label>
             <select id="filtro-grado">
                 <option value="">-- Todos los Grados --</option>
-                </select>
+            </select>
 
-            <label for="filtro-grupo">Filtrar por Grupo:</label>
+            <label for="filtro-grupo">Grupo:</label>
             <select id="filtro-grupo" disabled>
                 <option value="">-- Todos los Grupos --</option>
-                </select>
+            </select>
+            
+            <span class="limite-info">Máx. Fuera por Grupo: <span id="max-limit">2</span></span>
         </div>
 
-        <div id="estudiantes-container">
-            <p>Cargando datos...</p>
-        </div>
+        <section class="dashboard">
+            <h2>Estadísticas Rápidas</h2>
+            <div class="grafico-container">
+                <canvas id="statusChart"></canvas>
+            </div>
+        </section>
+
+        <section class="estudiantes-lista">
+            <h2>Registro de Estudiantes</h2>
+            <div id="estudiantes-container">
+                <p>Cargando datos...</p>
+            </div>
+        </section>
     </main>
 
     <script src="script.js"></script>
