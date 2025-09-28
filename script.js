@@ -1,243 +1,532 @@
-/* --- Variables de Color --- */
-:root {
-    --primary-color: #6A0DAD; /* Morado Oscuro/Berinjela */
-    --accent-color: #FFD700; /* Dorado para destacar (alternativo) */
-    --background-light: #f9f9f9;
-    --background-card: #ffffff;
-    --text-dark: #2c2c2c;
-    --text-light: #ffffff;
-    --out-color: #B22222; /* Rojo Ladrillo para Salida */
-    --in-color: #28a745;
-}
+// ** CONFIGURACIÓN Y CONSTANTES **
+const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRcumpa6f1_6lkdyOU1hkymg4evm6a1vXFaWfNRDJ-cxM8qqETGPJ6GnfrzYdOdQ8RHxJ3-wuwxymzD/pub?output=csv';
+const MAX_STUDENTS_OUT_PER_GROUP = 2; 
 
-/* --- TEMA OSCURO (Negro y Morado) --- */
-body.dark-mode {
-    --primary-color: #7B68EE; /* Morado claro para Dark Mode */
-    --background-light: #121212; /* Negro total */
-    --background-card: #1e1e1e; /* Negro oscuro para tarjetas */
-    --text-dark: #f0f0f0;
-    --out-color: #ff6347; /* Rojo más brillante */
-}
+// Elementos del DOM
+const container = document.getElementById('estudiantes-container');
+const filtroGrado = document.getElementById('filtro-grado');
+const filtroGrupo = document.getElementById('filtro-grupo');
+const searchInput = document.getElementById('search-input');
+const themeToggle = document.getElementById('theme-toggle');
+const maxLimitSpan = document.getElementById('max-limit');
+const rankingContainer = document.getElementById('ranking-container'); // Nuevo
 
+// Estado Global
+let estudiantesData = []; 
+let estudiantesStatus = {}; 
+let gradosUnicos = new Set();
+let gruposPorGrado = {};
+let studentMetrics = []; // Para las estadísticas avanzadas
 
-/* --- Global y Transiciones --- */
-body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    margin: 0;
-    padding: 0;
-    background-color: var(--background-light); 
-    color: var(--text-dark);
-    transition: background-color 0.3s ease, color 0.3s ease;
-}
-
-header {
-    background-color: var(--primary-color);
-    color: var(--text-light);
-    padding: 20px 40px 0;
-    text-align: center;
-    position: relative;
-    transition: background-color 0.3s ease;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-}
-
-h1 { margin: 0; font-size: 1.8em; }
-h2 { color: var(--primary-color); margin-top: 20px; border-bottom: 2px solid var(--primary-color); padding-bottom: 5px; }
-h3 { color: var(--primary-color); margin-top: 30px; }
-
-main { padding: 20px; max-width: 1200px; margin: 0 auto; }
-
-/* --- Menú de Navegación (Nav) --- */
-.main-nav {
-    display: flex;
-    justify-content: center;
-    padding-top: 20px;
-}
-.nav-item {
-    padding: 10px 20px;
-    text-decoration: none;
-    color: #ccc;
-    border-bottom: 3px solid transparent;
-    transition: all 0.2s ease;
-    font-weight: 600;
-}
-.nav-item:hover { color: var(--text-light); }
-.nav-item.active {
-    color: var(--text-light);
-    border-bottom: 3px solid var(--accent-color); /* Morado claro o Dorado/Amarillo */
-}
-
-#theme-toggle {
-    position: absolute;
-    top: 25px;
-    right: 30px;
-    background: none; border: none; cursor: pointer; font-size: 1.5em; color: var(--text-light);
-}
-
-/* --- Tarjetas de Resumen (Summary Cards) --- */
-.summary-cards-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 20px;
-    margin-bottom: 30px;
-}
-.summary-card {
-    background-color: var(--background-card);
-    padding: 20px;
-    border-radius: 12px;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-    display: flex;
-    align-items: center;
-    border-left: 5px solid var(--primary-color);
-}
-.card-icon {
-    font-size: 2.5em;
-    margin-right: 15px;
-    color: var(--primary-color);
-}
-.card-title { color: #6c757d; font-size: 0.9em; }
-body.dark-mode .card-title { color: #aaa; }
-.card-value { font-size: 2em; font-weight: bold; color: var(--text-dark); }
+// Instancias de Gráficos
+let statusChartInstance = null;
+let timeChartInstance = null;
 
 
-/* Estilos de Control (Filtros y Búsqueda) */
-.controls-bar {
-    display: flex;
-    justify-content: space-between;
-    gap: 20px;
-    margin-bottom: 20px;
-    padding: 15px;
-    background-color: var(--background-card);
-    border-radius: 12px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-}
-.search-input, .filtros select {
-    padding: 10px 15px;
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    font-size: 1em;
-    background-color: var(--background-light);
-    color: var(--text-dark);
-}
-body.dark-mode .search-input, body.dark-mode .filtros select {
-    background-color: #333;
-    border-color: #555;
-    color: var(--text-dark);
+// ----------------------------------------------------------------------
+// --- UTILERÍAS ---
+// ----------------------------------------------------------------------
+
+function saveStatus() {
+    localStorage.setItem('estudiantesStatus', JSON.stringify(estudiantesStatus));
 }
 
-.filtros {
-    display: flex;
-    gap: 15px;
-    align-items: center;
-}
-.limite-info { color: var(--primary-color); }
-#max-limit { color: var(--out-color); font-weight: bold; }
-
-/* --- Lista de Estudiantes (Grid) --- */
-#estudiantes-container {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 15px;
-}
-.estudiante-card {
-    background-color: var(--background-card);
-    border: 1px solid #eee;
-    padding: 15px;
-    border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    transition: all 0.3s ease;
-}
-.estudiante-card:hover {
-    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+function loadStatus() {
+    const savedStatus = localStorage.getItem('estudiantesStatus');
+    if (savedStatus) {
+        estudiantesStatus = JSON.parse(savedStatus);
+    }
 }
 
-.estudiante-card.out {
-    background-color: #ffe0e6; /* Rosa suave para Fuera */
-    border-left: 5px solid var(--out-color); /* Barra roja lateral */
-}
-body.dark-mode .estudiante-card.out {
-    background-color: #331515; 
-    border-left: 5px solid var(--out-color);
-}
-
-.registro-btn {
-    padding: 8px;
-    background-color: var(--out-color);
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    margin-top: 10px;
-    font-weight: 600;
-    transition: background-color 0.2s;
-}
-.estudiante-card.out .registro-btn {
-    background-color: var(--in-color); 
-}
-.registro-btn:disabled {
-    cursor: not-allowed;
-    background-color: #6c757d;
+function formatTime(ms) {
+    // Si el tiempo es menor a 1 minuto, muestra en segundos
+    if (ms < 60000) {
+        return `${Math.round(ms / 1000)} seg`;
+    }
+    const minutes = Math.floor(ms / 60000);
+    // Si queremos ser más precisos con minutos y segundos:
+    const seconds = Math.round((ms % 60000) / 1000);
+    if (seconds > 0 && minutes < 60) {
+         return `${minutes} min ${seconds} seg`;
+    }
+    return `${minutes} min`; 
 }
 
-/* --- ESTADÍSTICAS AVANZADAS --- */
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-    gap: 20px;
-    margin-top: 20px;
-}
-.grafico-container {
-    width: 100%;
-    max-width: 600px;
-    height: 350px;
-    padding: 20px;
-    background-color: var(--background-card);
-    border-radius: 12px;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+// ----------------------------------------------------------------------
+// --- LÓGICA CSV Y CARGA ---
+// ----------------------------------------------------------------------
+
+function parseCSVtoJSON(csvText) {
+    const lines = csvText.trim().split('\n');
+    if (lines.length <= 1) return [];
+
+    const headers = lines[0].trim().split(',').map(header => header.trim());
+    const data = [];
+
+    for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line === '') continue;
+
+        const values = line.split(',');
+        const student = {};
+
+        headers.forEach((header, index) => {
+            const value = values[index] ? values[index].trim() : '';
+            student[header] = value; 
+        });
+
+        if (student.Nombre_alumno && student.Nombre_alumno !== '') {
+            const id = student.ID;
+            data.push(student);
+            
+            if (!estudiantesStatus.hasOwnProperty(id)) {
+                 estudiantesStatus[id] = { state: 'in', outTime: null, totalTimeOut: 0 }; 
+            } else {
+                 if (!estudiantesStatus[id].totalTimeOut) estudiantesStatus[id].totalTimeOut = 0;
+            }
+        }
+    }
+    return data;
 }
 
-/* --- Ranking Table --- */
-.ranking-table-container {
-    background-color: var(--background-card);
-    padding: 20px;
-    border-radius: 12px;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-    margin-top: 15px;
-    overflow-x: auto;
-}
-.ranking-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-.ranking-table th, .ranking-table td {
-    padding: 12px 15px;
-    text-align: left;
-    border-bottom: 1px solid #eee;
-}
-body.dark-mode .ranking-table th, body.dark-mode .ranking-table td {
-    border-bottom: 1px solid #333;
-}
-.ranking-table th {
-    background-color: var(--primary-color);
-    color: white;
-    font-weight: 700;
-    text-transform: uppercase;
-}
-.ranking-table tr:nth-child(even) {
-    background-color: var(--background-light);
-}
-body.dark-mode .ranking-table tr:nth-child(even) {
-    background-color: #252525;
+async function cargarEstudiantes() {
+    loadStatus(); 
+    if (maxLimitSpan) maxLimitSpan.textContent = MAX_STUDENTS_OUT_PER_GROUP; 
+    if (container) container.innerHTML = '<p>Cargando datos desde Google Sheets...</p>';
+
+    try {
+        const response = await fetch(GOOGLE_SHEET_URL);
+        if (!response.ok) {
+            throw new Error(`Error HTTP: ${response.status}.`);
+        }
+        const csvText = await response.text();
+        estudiantesData = parseCSVtoJSON(csvText);
+
+        if (estudiantesData.length === 0) {
+            container.innerHTML = '<p>No se encontraron estudiantes.</p>';
+            return;
+        }
+
+        procesarDatosParaFiltros(estudiantesData); 
+        llenarFiltroGrado();
+        aplicarFiltros();
+        updateGlobalStatus();
+        initCharts();
+        
+    } catch (error) {
+        console.error('Error al cargar los datos:', error);
+        if (container) container.innerHTML = `<p style="color: red;">⚠️ Error al cargar los datos: ${error.message}.</p>`;
+    }
 }
 
 
-/* --- CONTENIDO OCULTO (Pestañas) --- */
-.content-section { display: none; }
-.content-section.active { display: block; }
+// ----------------------------------------------------------------------
+// --- LÓGICA DE FILTRADO Y PROCESAMIENTO ---
+// ----------------------------------------------------------------------
 
+function procesarDatosParaFiltros(data) {
+    gradosUnicos = new Set();
+    gruposPorGrado = {};
+    
+    data.forEach(estudiante => {
+        const grado = String(estudiante.Grado).trim(); 
+        const grupo = String(estudiante.Grupo).trim();
 
-/* --- Diseño Responsivo --- */
-@media (max-width: 800px) {
-    .controls-bar { flex-direction: column; gap: 10px; }
-    .filtros { flex-wrap: wrap; justify-content: space-around; gap: 10px; }
-    .stats-grid { grid-template-columns: 1fr; }
+        if (grado && grado !== 'N/A') gradosUnicos.add(grado);
+        
+        if (!gruposPorGrado[grado]) {
+            gruposPorGrado[grado] = new Set();
+        }
+        if (grupo && grupo !== 'N/A') gruposPorGrado[grado].add(grupo);
+    });
+
+    gradosUnicos = Array.from(gradosUnicos).sort();
+    for (const grado in gruposPorGrado) {
+        gruposPorGrado[grado] = Array.from(gruposPorGrado[grado]).sort();
+    }
 }
+
+function llenarFiltroGrado() {
+    filtroGrado.innerHTML = '<option value="">Todos</option>';
+    gradosUnicos.forEach(grado => {
+        const option = document.createElement('option');
+        option.value = grado;
+        option.textContent = `Grado ${grado}`;
+        filtroGrado.appendChild(option);
+    });
+}
+
+function llenarFiltroGrupo(gradoSeleccionado) {
+    filtroGrupo.innerHTML = '<option value="">Todos</option>';
+    filtroGrupo.disabled = true;
+
+    if (gradoSeleccionado && gruposPorGrado[gradoSeleccionado]) {
+        gruposPorGrado[gradoSeleccionado].forEach(grupo => {
+            const option = document.createElement('option');
+            option.value = grupo;
+            option.textContent = `Grupo ${grupo}`;
+            filtroGrupo.appendChild(option);
+        });
+        filtroGrupo.disabled = false;
+    }
+}
+
+function aplicarFiltros() {
+    const gradoSeleccionado = filtroGrado.value;
+    const grupoSeleccionado = filtroGrupo.value;
+    const searchText = searchInput.value.toLowerCase();
+
+    let estudiantesFiltrados = estudiantesData;
+
+    if (gradoSeleccionado) {
+        estudiantesFiltrados = estudiantesFiltrados.filter(est => 
+            String(est.Grado).trim() === gradoSeleccionado
+        );
+    }
+    
+    if (grupoSeleccionado) {
+        estudiantesFiltrados = estudiantesFiltrados.filter(est => 
+            String(est.Grupo).trim() === grupoSeleccionado
+        );
+    }
+
+    if (searchText) {
+        estudiantesFiltrados = estudiantesFiltrados.filter(est => 
+            (est.Nombre_alumno && est.Nombre_alumno.toLowerCase().includes(searchText)) || 
+            (est.ID && String(est.ID).includes(searchText))
+        );
+    }
+
+    mostrarEstudiantes(estudiantesFiltrados);
+}
+
+
+// ----------------------------------------------------------------------
+// --- LÓGICA DE REGISTRO Y ESTADO ---
+// ----------------------------------------------------------------------
+
+function toggleRegistro(id) {
+    const studentStatus = estudiantesStatus[id];
+    const estudiante = estudiantesData.find(est => est.ID === id);
+
+    if (!estudiante) return;
+
+    if (studentStatus.state === 'in') {
+        const outCount = countStudentsOutByGroup(estudiante.Grado, estudiante.Grupo);
+        
+        if (outCount >= MAX_STUDENTS_OUT_PER_GROUP) {
+            alert(`Límite alcanzado: Ya hay ${MAX_STUDENTS_OUT_PER_GROUP} estudiantes del grupo ${estudiante.Grado}-${estudiante.Grupo} fuera.`);
+            return; 
+        }
+        
+        studentStatus.state = 'out';
+        studentStatus.outTime = new Date().getTime(); 
+        
+    } else {
+        studentStatus.state = 'in';
+        if (studentStatus.outTime) {
+            const timeElapsed = new Date().getTime() - studentStatus.outTime;
+            studentStatus.totalTimeOut += timeElapsed;
+            studentStatus.outTime = null; 
+        }
+    }
+
+    saveStatus(); 
+    updateGlobalStatus();
+    aplicarFiltros(); 
+}
+
+function countStudentsOutByGroup(grado, grupo) {
+    let count = 0;
+    for (const est of estudiantesData) {
+        if (String(est.Grado).trim() === String(grado).trim() && 
+            String(est.Grupo).trim() === String(grupo).trim() && 
+            estudiantesStatus[est.ID].state === 'out') {
+            count++;
+        }
+    }
+    return count;
+}
+
+function updateGlobalStatus() {
+    let outCount = 0;
+    let totalTimeOutMS = 0;
+
+    for (const id in estudiantesStatus) {
+        const status = estudiantesStatus[id];
+        if (status.state === 'out') {
+            outCount++;
+        }
+        totalTimeOutMS += status.totalTimeOut;
+    }
+
+    const totalStudents = estudiantesData.length;
+    document.getElementById('count-out').textContent = outCount;
+    document.getElementById('count-total').textContent = totalStudents;
+    
+    const avgTimeMs = totalStudents > 0 ? totalTimeOutMS / totalStudents : 0;
+    document.getElementById('avg-time-out').textContent = formatTime(avgTimeMs);
+
+    // Actualiza estadísticas avanzadas cada vez que el estado cambia
+    studentMetrics = calculateStudentTimeMetrics();
+    updateCharts(outCount, totalStudents - outCount);
+    displayStudentRanking(studentMetrics); 
+}
+
+function mostrarEstudiantes(estudiantesAMostrar) {
+    container.innerHTML = ''; 
+
+    if (estudiantesAMostrar.length === 0) {
+        container.innerHTML = '<p>No se encontraron estudiantes con los filtros aplicados.</p>';
+        return;
+    }
+
+    estudiantesAMostrar.forEach(estudiante => {
+        const id = estudiante.ID;
+        const grado = estudiante.Grado;
+        const grupo = estudiante.Grupo;
+        const isOut = estudiantesStatus[id].state === 'out';
+        
+        const outCount = countStudentsOutByGroup(grado, grupo);
+        const limitReached = !isOut && outCount >= MAX_STUDENTS_OUT_PER_GROUP;
+
+        const card = document.createElement('div');
+        card.classList.add('estudiante-card');
+        if (isOut) card.classList.add('out');
+        if (limitReached) card.classList.add('limit-reached');
+        
+        const btnText = isOut ? 'Registrar Entrada' : 'Registrar Salida';
+        
+        card.innerHTML = `
+            <div class="estudiante-info">
+                <strong>${estudiante.Nombre_alumno}</strong> (${id})
+            </div>
+            <div class="grupo-info">
+                Grado: ${grado} | Grupo: ${grupo}
+                <br>Tiempo total fuera: ${formatTime(estudiantesStatus[id].totalTimeOut)}
+            </div>
+            <button class="registro-btn" 
+                    data-id="${id}" 
+                    ${limitReached ? 'disabled' : ''}>
+                ${btnText}
+            </button>
+        `;
+        
+        container.appendChild(card);
+    });
+    
+    document.querySelectorAll('.registro-btn').forEach(button => {
+        button.addEventListener('click', (e) => {
+            const id = e.target.dataset.id;
+            toggleRegistro(id);
+        });
+    });
+}
+
+
+// ----------------------------------------------------------------------
+// --- LÓGICA DE ESTADÍSTICAS AVANZADAS ---
+// ----------------------------------------------------------------------
+
+function calculateStudentTimeMetrics() {
+    const metrics = estudiantesData.map(estudiante => {
+        const id = estudiante.ID;
+        const status = estudiantesStatus[id];
+        
+        // Sumamos el tiempo acumulado más el tiempo que lleva fuera AHORA MISMO
+        let currentTotalTimeOut = status.totalTimeOut;
+        if (status.state === 'out' && status.outTime) {
+            currentTotalTimeOut += (new Date().getTime() - status.outTime);
+        }
+
+        return {
+            id: id,
+            name: estudiante.Nombre_alumno,
+            gradeGroup: `${estudiante.Grado}-${estudiante.Grupo}`,
+            totalTimeOut: currentTotalTimeOut,
+        };
+    }).filter(metric => metric.totalTimeOut > 0) // Solo alumnos que han salido hoy
+      .sort((a, b) => b.totalTimeOut - a.totalTimeOut); // Ordenar de mayor a menor
+
+    return metrics;
+}
+
+function displayStudentRanking(metrics) {
+    if (!rankingContainer) return;
+    
+    if (metrics.length === 0) {
+        rankingContainer.innerHTML = '<p>Ningún alumno ha salido al descanso hoy.</p>';
+        return;
+    }
+
+    let tableHTML = `
+        <table class="ranking-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Alumno</th>
+                    <th>Grado/Grupo</th>
+                    <th>Tiempo Total Fuera</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    metrics.slice(0, 10).forEach((metric, index) => { // Mostrar top 10
+        tableHTML += `
+            <tr>
+                <td>${index + 1}</td>
+                <td>${metric.name}</td>
+                <td>${metric.gradeGroup}</td>
+                <td>${formatTime(metric.totalTimeOut)}</td>
+            </tr>
+        `;
+    });
+
+    tableHTML += '</tbody></table>';
+    rankingContainer.innerHTML = tableHTML;
+}
+
+function updateTimeChartByGroup(metrics) {
+    const groupTimes = {}; // { '1-A': 150000, '2-B': 300000, ... }
+
+    metrics.forEach(metric => {
+        const key = metric.gradeGroup;
+        if (!groupTimes[key]) groupTimes[key] = 0;
+        groupTimes[key] += metric.totalTimeOut;
+    });
+
+    const labels = Object.keys(groupTimes).sort();
+    const data = labels.map(key => Math.round(groupTimes[key] / 60000)); // En minutos
+
+    if (timeChartInstance) {
+        timeChartInstance.data.labels = labels;
+        timeChartInstance.data.datasets[0].data = data;
+        timeChartInstance.data.datasets[0].label = 'Tiempo Acumulado (min)';
+        timeChartInstance.data.datasets[0].backgroundColor = labels.map((_, i) => i % 2 === 0 ? '#6A0DAD' : '#9370DB'); // Morados
+        timeChartInstance.options.plugins.title.text = 'Tiempo Total Acumulado por Grado/Grupo';
+        timeChartInstance.update();
+    }
+}
+
+
+// ----------------------------------------------------------------------
+// --- LÓGICA DE GRÁFICOS Y TEMA ---
+// ----------------------------------------------------------------------
+
+function initCharts() {
+    const totalStudents = estudiantesData.length;
+    const outCount = estudiantesData.filter(est => estudiantesStatus[est.ID].state === 'out').length;
+    const inCount = totalStudents - outCount;
+    
+    // Gráfico de Estado Actual (Doughnut)
+    const ctxStatus = document.getElementById('statusChart').getContext('2d');
+    statusChartInstance = new Chart(ctxStatus, {
+        type: 'doughnut',
+        data: {
+            labels: ['Estudiantes Fuera', 'Estudiantes Dentro'],
+            datasets: [{
+                data: [outCount, inCount],
+                backgroundColor: ['#B22222', '#28a745'], 
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { title: { display: true, text: 'Estado Actual' } }
+        }
+    });
+
+    // Gráfico de Distribución por Grupo (Barras)
+    const ctxTime = document.getElementById('timeChart').getContext('2d');
+    timeChartInstance = new Chart(ctxTime, {
+        type: 'bar',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Tiempo Acumulado (min)',
+                data: [],
+                backgroundColor: '#6A0DAD', // Morado
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true } },
+            plugins: { title: { display: true, text: 'Tiempo Total Acumulado por Grado/Grupo' } }
+        }
+    });
+    
+    // Actualizar con datos iniciales
+    updateTimeChartByGroup(calculateStudentTimeMetrics());
+}
+
+function updateCharts(outCount, inCount) {
+    if (statusChartInstance) {
+        statusChartChartInstance.data.datasets[0].data = [outCount, inCount];
+        const color = document.body.classList.contains('dark-mode') ? '#1e1e1e' : '#fff'; // Fondo de tarjeta
+        statusChartInstance.data.datasets[0].borderColor = [color, color];
+        statusChartInstance.options.plugins.title.color = document.body.classList.contains('dark-mode') ? '#f0f0f0' : '#2c2c2c';
+
+        statusChartInstance.update();
+    }
+    // Llama a la actualización del gráfico de grupos cada vez que se actualiza el estado global
+    updateTimeChartByGroup(calculateStudentTimeMetrics()); 
+}
+
+function handleNavigation() {
+    document.querySelectorAll('.main-nav .nav-item').forEach(item => {
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
+            document.querySelectorAll('.main-nav .nav-item').forEach(nav => nav.classList.remove('active'));
+            this.classList.add('active');
+            
+            document.querySelectorAll('.content-section').forEach(section => section.classList.remove('active'));
+            const targetSection = document.getElementById(this.dataset.section);
+            if (targetSection) {
+                targetSection.classList.add('active');
+            }
+        });
+    });
+}
+
+function toggleTheme() {
+    document.body.classList.toggle('dark-mode');
+    const isDark = document.body.classList.contains('dark-mode');
+    themeToggle.textContent = isDark ? '☀️' : '🌙';
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    
+    // Forzar actualización de gráficos para colores de borde/título
+    updateGlobalStatus();
+}
+
+function loadTheme() {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+        document.body.classList.add('dark-mode');
+        themeToggle.textContent = '☀️';
+    } else {
+        themeToggle.textContent = '🌙';
+    }
+}
+
+
+// ----------------------------------------------------------------------
+// --- INICIALIZACIÓN ---
+// ----------------------------------------------------------------------
+document.addEventListener('DOMContentLoaded', () => {
+    loadTheme();
+    handleNavigation();
+    
+    if (searchInput) searchInput.addEventListener('keyup', aplicarFiltros);
+    if (filtroGrado) filtroGrado.addEventListener('change', () => {
+        const grado = filtroGrado.value;
+        llenarFiltroGrupo(grado);
+        aplicarFiltros();
+    });
+    if (filtroGrupo) filtroGrupo.addEventListener('change', aplicarFiltros);
+    if (themeToggle) themeToggle.addEventListener('click', toggleTheme);
+    
+    cargarEstudiantes();
+});
