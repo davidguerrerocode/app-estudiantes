@@ -363,3 +363,252 @@ function displayOutStudentsDashboard() {
         const statusA = estudiantesStatus[a.ID];
         const statusB = estudiantesStatus[b.ID];
         const timeA = statusA.outTime ? new Date().getTime() - statusA.outTime : 0;
+        const timeB = statusB.outTime ? new Date().getTime() - statusB.outTime : 0;
+        return timeB - timeA;
+    });
+
+    // Usamos la función genérica, mostrando la alerta de tiempo
+    mostrarEstudiantes(outStudents, outDashboard, true);
+}
+
+
+// ----------------------------------------------------------------------
+// --- LÓGICA DE ESTADÍSTICAS AVANZADAS ---
+// ----------------------------------------------------------------------
+
+function calculateStudentTimeMetrics() {
+    const metrics = estudiantesData.map(estudiante => {
+        const id = estudiante.ID;
+        const status = estudiantesStatus[id];
+        
+        let currentTotalTimeOut = status.totalTimeOut;
+        if (status.state === 'out' && status.outTime) {
+            currentTotalTimeOut += (new Date().getTime() - status.outTime);
+        }
+
+        return {
+            id: id,
+            name: estudiante.Nombre_alumno,
+            gradeGroup: `${estudiante.Grado}-${estudiante.Grupo}`,
+            totalTimeOut: currentTotalTimeOut,
+        };
+    }).filter(metric => metric.totalTimeOut > 0)
+      .sort((a, b) => b.totalTimeOut - a.totalTimeOut);
+
+    return metrics;
+}
+
+function displayStudentRanking(metrics) {
+    if (!rankingContainer) return;
+    
+    if (metrics.length === 0) {
+        rankingContainer.innerHTML = '<p>Ningún alumno ha salido al descanso hoy.</p>';
+        return;
+    }
+    // ... (El resto del código de displayStudentRanking se mantiene igual)
+    let tableHTML = `
+        <table class="ranking-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Alumno</th>
+                    <th>Grado/Grupo</th>
+                    <th>Tiempo Total Fuera</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    metrics.slice(0, 10).forEach((metric, index) => { 
+        tableHTML += `
+            <tr>
+                <td>${index + 1}</td>
+                <td>${metric.name}</td>
+                <td>${metric.gradeGroup}</td>
+                <td>${formatTime(metric.totalTimeOut)}</td>
+            </tr>
+        `;
+    });
+
+    tableHTML += '</tbody></table>';
+    rankingContainer.innerHTML = tableHTML;
+}
+
+// NUEVA FUNCIÓN: Simulación de Historial de Movimientos
+function displayHistorial() {
+    if (!historialContainer) return;
+
+    // Simulación de 10 movimientos recientes
+    const now = new Date().getTime();
+    const simulatedData = [
+        { alumno: "Juan Pérez", tipo: "Salida", tiempo: now - (5 * 60000), grupo: "1-A" },
+        { alumno: "María López", tipo: "Entrada", tiempo: now - (8 * 60000), grupo: "3-C" },
+        { alumno: "Carlos Ruiz", tipo: "Salida", tiempo: now - (15 * 60000), grupo: "2-B" },
+        { alumno: "Ana Gómez", tipo: "Entrada", tiempo: now - (20 * 60000), grupo: "1-A" },
+        { alumno: "Pedro Díaz", tipo: "Salida", tiempo: now - (35 * 60000), grupo: "3-C" },
+        { alumno: "Sofía Castro", tipo: "Entrada", tiempo: now - (40 * 60000), grupo: "2-B" },
+    ].sort((a, b) => b.tiempo - a.tiempo); // Más reciente primero
+
+    let tableHTML = `
+        <table class="ranking-table">
+            <thead>
+                <tr>
+                    <th>Hora</th>
+                    <th>Alumno</th>
+                    <th>Grado/Grupo</th>
+                    <th>Tipo</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    simulatedData.forEach(item => {
+        const rowClass = item.tipo === 'Salida' ? 'out' : 'in';
+        tableHTML += `
+            <tr class="${rowClass}">
+                <td>${formatDateTime(item.tiempo)}</td>
+                <td>${item.alumno}</td>
+                <td>${item.grupo}</td>
+                <td style="font-weight: bold; color: ${item.tipo === 'Salida' ? '#6A0DAD' : '#28a745'};">${item.tipo}</td>
+            </tr>
+        `;
+    });
+
+    tableHTML += '</tbody></table>';
+    historialContainer.innerHTML = tableHTML;
+}
+
+
+// ----------------------------------------------------------------------
+// --- LÓGICA DE GRÁFICOS Y TEMA ---
+// ----------------------------------------------------------------------
+
+function initCharts() {
+    // ... (El código de initCharts se mantiene igual)
+    const totalStudents = estudiantesData.length;
+    const outCount = estudiantesData.filter(est => estudiantesStatus[est.ID].state === 'out').length;
+    const inCount = totalStudents - outCount;
+    
+    // Gráfico de Estado Actual (Doughnut)
+    const ctxStatus = document.getElementById('statusChart').getContext('2d');
+    statusChartInstance = new Chart(ctxStatus, {
+        type: 'doughnut',
+        data: {
+            labels: ['Estudiantes Fuera', 'Estudiantes Dentro'],
+            datasets: [{
+                data: [outCount, inCount],
+                backgroundColor: ['#6A0DAD', '#28a745'], 
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { title: { display: true, text: 'Estado Actual' } }
+        }
+    });
+
+    // Gráfico de Distribución por Grupo (Barras)
+    const ctxTime = document.getElementById('timeChart').getContext('2d');
+    timeChartInstance = new Chart(ctxTime, {
+        type: 'bar',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Tiempo Acumulado (min)',
+                data: [],
+                backgroundColor: '#6A0DAD', 
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true } },
+            plugins: { title: { display: true, text: 'Tiempo Total Acumulado por Grado/Grupo' } }
+        }
+    });
+    
+    updateTimeChartByGroup(calculateStudentTimeMetrics());
+}
+
+function updateCharts(outCount, inCount) {
+    if (statusChartInstance) {
+        statusChartInstance.data.datasets[0].data = [outCount, inCount];
+        const color = document.body.classList.contains('dark-mode') ? '#1e1e1e' : '#fff';
+        statusChartInstance.data.datasets[0].borderColor = [color, color];
+        statusChartInstance.options.plugins.title.color = document.body.classList.contains('dark-mode') ? '#f0f0f0' : '#2c2c2c';
+
+        statusChartInstance.update();
+    }
+    updateTimeChartByGroup(calculateStudentTimeMetrics()); 
+}
+
+function handleNavigation() {
+    document.querySelectorAll('.main-nav .nav-item').forEach(item => {
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
+            document.querySelectorAll('.main-nav .nav-item').forEach(nav => nav.classList.remove('active'));
+            this.classList.add('active');
+            
+            document.querySelectorAll('.content-section').forEach(section => section.classList.remove('active'));
+            const targetSection = document.getElementById(this.dataset.section);
+            if (targetSection) {
+                targetSection.classList.add('active');
+            }
+        });
+    });
+}
+
+function toggleTheme() {
+    document.body.classList.toggle('dark-mode');
+    const isDark = document.body.classList.contains('dark-mode');
+    themeToggle.textContent = isDark ? '☀️' : '🌙';
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    
+    updateGlobalStatus();
+}
+
+function loadTheme() {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+        document.body.classList.add('dark-mode');
+        themeToggle.textContent = '☀️';
+    } else {
+        themeToggle.textContent = '🌙';
+    }
+}
+
+
+// ----------------------------------------------------------------------
+// --- INICIALIZACIÓN ---
+// ----------------------------------------------------------------------
+document.addEventListener('DOMContentLoaded', () => {
+    loadTheme();
+    handleNavigation();
+    
+    // Los filtros ahora solo llaman a aplicarFiltros (que maneja la lista vacía)
+    if (searchInput) searchInput.addEventListener('keyup', aplicarFiltros);
+    if (filtroGrado) filtroGrado.addEventListener('change', () => {
+        llenarFiltroGrupo(filtroGrado.value);
+        aplicarFiltros();
+    });
+    if (filtroGrupo) filtroGrupo.addEventListener('change', aplicarFiltros);
+    if (themeToggle) themeToggle.addEventListener('click', toggleTheme);
+    
+    cargarEstudiantes();
+    
+    // Actualización de tiempo real cada 5 segundos
+    setInterval(() => {
+        if (document.getElementById('registro').classList.contains('active')) {
+             displayOutStudentsDashboard(); // Actualiza el tiempo 'Lleva fuera'
+             // Solo actualizamos la lista principal si ya tiene contenido (filtros aplicados)
+             if (container.innerHTML !== '<p>Utilice la búsqueda o los filtros para mostrar la lista completa de alumnos.</p>') {
+                 aplicarFiltros(); 
+             }
+        }
+        updateGlobalStatus(); // Actualiza contadores y gráficos
+        if (document.getElementById('estadisticas').classList.contains('active')) {
+            displayHistorial();
+        }
+    }, 5000); 
+});
